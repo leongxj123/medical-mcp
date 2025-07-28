@@ -107,6 +107,35 @@ Found 10 article(s)
    Publication Date: 2024-01-15
 ```
 
+#### `search-google-scholar`
+
+Search for academic research articles using Google Scholar.
+
+**Input:**
+
+- `query` (string): Academic topic or research query to search for
+
+**Output:**
+
+- Academic research articles with titles, authors, abstracts, journals, years, citations, and URLs
+
+**Example:**
+
+```
+Google Scholar Search: "machine learning healthcare"
+
+Found 10 article(s)
+
+1. **Machine Learning in Healthcare: A Systematic Review**
+   Authors: Smith J, Johnson A - Journal of Medical AI
+   Year: 2023
+   Citations: Cited by 45
+   URL: https://scholar.google.com/...
+   Abstract: This systematic review examines the application of machine learning...
+```
+
+**Note:** This tool uses web scraping to access Google Scholar since it doesn't provide a public API. It includes rate limiting protection and stealth measures to avoid detection.
+
 ### 🏥 Drug Nomenclature Tools
 
 #### `search-drug-nomenclature`
@@ -245,6 +274,13 @@ This MCP server integrates with the following medical APIs:
 - Drug name standardization and relationships
 - Clinical drug information
 
+### Google Scholar (Web Scraping)
+
+- Web scraping of Google Scholar search results
+- Academic research article discovery
+- Citation and publication information
+- **Note**: Uses Puppeteer for browser automation with anti-detection measures
+
 ## Data Sources
 
 ### FDA (Food and Drug Administration)
@@ -275,6 +311,14 @@ This MCP server integrates with the following medical APIs:
 - **Data**: Drug names, codes, relationships, and clinical information
 - **Update Frequency**: Weekly updates
 
+### Google Scholar (Web Scraping)
+
+- **Source**: Google Scholar academic search engine
+- **Coverage**: Academic papers, theses, books, and abstracts across all disciplines
+- **Data**: Research articles, citations, authors, journals, and publication dates
+- **Update Frequency**: Real-time as new papers are indexed
+- **Note**: Access via web scraping with rate limiting protection
+
 ## Error Handling
 
 The server includes comprehensive error handling:
@@ -283,6 +327,32 @@ The server includes comprehensive error handling:
 - Invalid queries return appropriate error messages
 - Rate limiting and API errors are handled gracefully
 - Fallback responses when specific APIs are unavailable
+
+## Web Scraping Implementation
+
+The Google Scholar integration uses Puppeteer for web scraping with the following features:
+
+### Anti-Detection Measures
+
+- **Stealth Mode**: Browser launched with multiple flags to avoid detection
+- **User Agent Spoofing**: Realistic browser user agent strings
+- **Random Delays**: Built-in delays between requests to avoid rate limiting
+- **Header Spoofing**: Realistic HTTP headers to appear as a regular browser
+- **Viewport Settings**: Standard desktop viewport dimensions
+
+### Robust Parsing
+
+- **Multiple Selectors**: Uses various CSS selectors to handle different Google Scholar layouts
+- **Fallback Strategies**: Multiple parsing approaches for different page structures
+- **Error Recovery**: Graceful handling of missing elements or changed page structures
+- **Data Validation**: Filters out incomplete or invalid results
+
+### Rate Limiting Protection
+
+- **Random Delays**: 1-3 second random delays between requests
+- **Browser Management**: Proper browser cleanup to prevent resource leaks
+- **Timeout Handling**: Configurable timeouts for network requests
+- **Error Recovery**: Automatic retry logic for failed requests
 
 ## Medical Disclaimer
 
@@ -297,6 +367,7 @@ The server includes comprehensive error handling:
 
 - `@modelcontextprotocol/sdk` - MCP SDK for server implementation
 - `superagent` - HTTP client for API requests
+- `puppeteer` - Browser automation for web scraping Google Scholar
 - `zod` - Schema validation for tool parameters
 
 ## License

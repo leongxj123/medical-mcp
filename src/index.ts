@@ -7,6 +7,7 @@ import {
   searchDrugs,
   searchPubMedArticles,
   searchRxNormDrugs,
+  searchGoogleScholar,
 } from "./utils.js";
 
 const server = new McpServer({
@@ -351,6 +352,76 @@ server.tool(
           {
             type: "text",
             text: `Error searching RxNorm: ${error.message || "Unknown error"}`,
+          },
+        ],
+      };
+    }
+  },
+);
+
+server.tool(
+  "search-google-scholar",
+  "Search for academic research articles using Google Scholar",
+  {
+    query: z
+      .string()
+      .describe("Academic topic or research query to search for"),
+  },
+  async ({ query }) => {
+    try {
+      const articles = await searchGoogleScholar(query);
+
+      if (articles.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `No academic articles found for "${query}". This could be due to:\n- No results matching your query\n- Google Scholar rate limiting\n- Network connectivity issues\n\nTry refining your search terms or try again later.`,
+            },
+          ],
+        };
+      }
+
+      let result = `**Google Scholar Search: "${query}"**\n\n`;
+      result += `Found ${articles.length} article(s)\n\n`;
+
+      articles.forEach((article, index) => {
+        result += `${index + 1}. **${article.title}**\n`;
+        if (article.authors) {
+          result += `   Authors: ${article.authors}\n`;
+        }
+        if (article.journal) {
+          result += `   Journal: ${article.journal}\n`;
+        }
+        if (article.year) {
+          result += `   Year: ${article.year}\n`;
+        }
+        if (article.citations) {
+          result += `   Citations: ${article.citations}\n`;
+        }
+        if (article.url) {
+          result += `   URL: ${article.url}\n`;
+        }
+        if (article.abstract) {
+          result += `   Abstract: ${article.abstract.substring(0, 300)}${article.abstract.length > 300 ? "..." : ""}\n`;
+        }
+        result += "\n";
+      });
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: result,
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error searching Google Scholar: ${error.message || "Unknown error"}. This might be due to rate limiting or network issues. Please try again later.`,
           },
         ],
       };
