@@ -65,3 +65,13 @@ export type GoogleScholarArticle = {
   pdf_url?: string;
   related_articles?: string[];
 };
+
+export type ClinicalGuideline = {
+  title: string;
+  organization: string;
+  year: string;
+  url: string;
+  description?: string;
+  category?: string;
+  evidence_level?: string;
+};

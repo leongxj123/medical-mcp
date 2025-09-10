@@ -8,6 +8,8 @@ import {
   searchPubMedArticles,
   searchRxNormDrugs,
   searchGoogleScholar,
+  getPubMedArticleByPMID,
+  searchClinicalGuidelines,
 } from "./utils.js";
 
 const server = new McpServer({
@@ -279,6 +281,12 @@ server.tool(
         if (article.doi) {
           result += `   DOI: ${article.doi}\n`;
         }
+        if (article.authors && article.authors.length > 0) {
+          result += `   Authors: ${article.authors.slice(0, 5).join(", ")}${article.authors.length > 5 ? " et al." : ""}\n`;
+        }
+        if (article.abstract && article.abstract !== "No abstract available") {
+          result += `   Abstract: ${article.abstract.substring(0, 300)}${article.abstract.length > 300 ? "..." : ""}\n`;
+        }
         result += "\n";
       });
 
@@ -296,6 +304,64 @@ server.tool(
           {
             type: "text",
             text: `Error searching medical literature: ${error.message || "Unknown error"}`,
+          },
+        ],
+      };
+    }
+  },
+);
+
+server.tool(
+  "get-article-details",
+  "Get detailed information about a specific medical article by PMID",
+  {
+    pmid: z.string().describe("PubMed ID (PMID) of the article"),
+  },
+  async ({ pmid }) => {
+    try {
+      const article = await getPubMedArticleByPMID(pmid);
+
+      if (!article) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `No article found with PMID: ${pmid}`,
+            },
+          ],
+        };
+      }
+
+      let result = `**Article Details for PMID: ${pmid}**\n\n`;
+      result += `**Title:** ${article.title}\n\n`;
+
+      if (article.authors && article.authors.length > 0) {
+        result += `**Authors:** ${article.authors.join(", ")}\n\n`;
+      }
+
+      result += `**Journal:** ${article.journal}\n`;
+      result += `**Publication Date:** ${article.publication_date}\n`;
+
+      if (article.doi) {
+        result += `**DOI:** ${article.doi}\n`;
+      }
+
+      result += `\n**Abstract:**\n${article.abstract}\n`;
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: result,
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error fetching article details: ${error.message || "Unknown error"}`,
           },
         ],
       };
@@ -422,6 +488,74 @@ server.tool(
           {
             type: "text",
             text: `Error searching Google Scholar: ${error.message || "Unknown error"}. This might be due to rate limiting or network issues. Please try again later.`,
+          },
+        ],
+      };
+    }
+  },
+);
+
+server.tool(
+  "search-clinical-guidelines",
+  "Search for clinical guidelines and practice recommendations from medical organizations",
+  {
+    query: z
+      .string()
+      .describe("Medical condition or topic to search for guidelines"),
+    organization: z
+      .string()
+      .optional()
+      .describe(
+        "Specific medical organization to filter by (e.g., 'American Heart Association', 'WHO')",
+      ),
+  },
+  async ({ query, organization }) => {
+    try {
+      const guidelines = await searchClinicalGuidelines(query, organization);
+
+      if (guidelines.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `No clinical guidelines found for "${query}"${organization ? ` from ${organization}` : ""}. Try a different search term or check if the condition has established guidelines.`,
+            },
+          ],
+        };
+      }
+
+      let result = `**Clinical Guidelines Search: "${query}"**\n\n`;
+      if (organization) {
+        result += `Organization Filter: ${organization}\n`;
+      }
+      result += `Found ${guidelines.length} guideline(s)\n\n`;
+
+      guidelines.forEach((guideline, index) => {
+        result += `${index + 1}. **${guideline.title}**\n`;
+        result += `   Organization: ${guideline.organization}\n`;
+        result += `   Year: ${guideline.year}\n`;
+        result += `   Category: ${guideline.category}\n`;
+        result += `   Evidence Level: ${guideline.evidence_level}\n`;
+        if (guideline.description) {
+          result += `   Description: ${guideline.description}\n`;
+        }
+        result += `   URL: ${guideline.url}\n\n`;
+      });
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: result,
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error searching clinical guidelines: ${error.message || "Unknown error"}`,
           },
         ],
       };
