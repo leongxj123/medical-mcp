@@ -5,6 +5,12 @@ import {
   RxNormDrug,
   WHOIndicator,
   ClinicalGuideline,
+  DrugSafetyInfo,
+  DrugInteraction,
+  DifferentialDiagnosis,
+  RiskCalculator,
+  LabValue,
+  DiagnosticCriteria,
 } from "./types.js";
 import superagent from "superagent";
 import puppeteer from "puppeteer";
@@ -797,4 +803,622 @@ export async function searchClinicalGuidelines(
     console.error("Error searching clinical guidelines:", error);
     return [];
   }
+}
+
+// Drug Safety Functions
+export async function getDrugSafetyInfo(
+  drugName: string,
+): Promise<DrugSafetyInfo | null> {
+  try {
+    // This is a simplified implementation - in a real system, you would integrate with
+    // specialized drug safety databases like LactMed, Reprotox, or commercial APIs
+
+    // For now, we'll search PubMed for safety information
+    const safetyTerms = [
+      `"${drugName}" AND "pregnancy" AND "safety"`,
+      `"${drugName}" AND "lactation" AND "breastfeeding"`,
+      `"${drugName}" AND "contraindications"`,
+      `"${drugName}" AND "adverse effects" AND "pregnancy"`,
+    ];
+
+    const safetyInfo: DrugSafetyInfo = {
+      drug_name: drugName,
+      last_updated: new Date().toISOString(),
+    };
+
+    // Search for pregnancy safety information
+    for (const term of safetyTerms) {
+      try {
+        const searchRes = await superagent
+          .get(`${PUBMED_API_BASE}/esearch.fcgi`)
+          .query({
+            db: "pubmed",
+            term: term,
+            retmode: "json",
+            retmax: 5,
+          })
+          .set("User-Agent", USER_AGENT);
+
+        const idList = searchRes.body.esearchresult?.idlist || [];
+        if (idList.length > 0) {
+          const fetchRes = await superagent
+            .get(`${PUBMED_API_BASE}/efetch.fcgi`)
+            .query({
+              db: "pubmed",
+              id: idList.join(","),
+              retmode: "xml",
+            })
+            .set("User-Agent", USER_AGENT);
+
+          const articles = parsePubMedXML(fetchRes.text);
+
+          // Extract safety information from abstracts
+          for (const article of articles) {
+            const abstract = (article.abstract || "").toLowerCase();
+            const title = article.title.toLowerCase();
+
+            // Determine pregnancy category based on content
+            if (
+              abstract.includes("pregnancy category") ||
+              title.includes("pregnancy category")
+            ) {
+              if (
+                abstract.includes("category a") ||
+                abstract.includes("category b")
+              ) {
+                safetyInfo.pregnancy_category = abstract.includes("category a")
+                  ? "A"
+                  : "B";
+              } else if (abstract.includes("category c")) {
+                safetyInfo.pregnancy_category = "C";
+              } else if (abstract.includes("category d")) {
+                safetyInfo.pregnancy_category = "D";
+              } else if (abstract.includes("category x")) {
+                safetyInfo.pregnancy_category = "X";
+              }
+            }
+
+            // Determine lactation safety
+            if (
+              abstract.includes("lactation") ||
+              abstract.includes("breastfeeding")
+            ) {
+              if (abstract.includes("safe") && !abstract.includes("not safe")) {
+                safetyInfo.lactation_safety = "Safe";
+              } else if (
+                abstract.includes("caution") ||
+                abstract.includes("monitor")
+              ) {
+                safetyInfo.lactation_safety = "Caution";
+              } else if (
+                abstract.includes("avoid") ||
+                abstract.includes("contraindicated")
+              ) {
+                safetyInfo.lactation_safety = "Avoid";
+              }
+            }
+
+            // Extract contraindications
+            if (
+              abstract.includes("contraindication") ||
+              abstract.includes("contraindicated")
+            ) {
+              if (!safetyInfo.contraindications) {
+                safetyInfo.contraindications = [];
+              }
+              // This is simplified - in practice, you'd use NLP to extract specific contraindications
+              safetyInfo.contraindications.push(
+                "See full prescribing information for contraindications",
+              );
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Error searching safety info for term: ${term}`, error);
+        continue;
+      }
+    }
+
+    // Set defaults if no information found
+    if (!safetyInfo.pregnancy_category) {
+      safetyInfo.pregnancy_category = "N"; // Not classified
+    }
+    if (!safetyInfo.lactation_safety) {
+      safetyInfo.lactation_safety = "Unknown";
+    }
+
+    return safetyInfo;
+  } catch (error) {
+    console.error("Error getting drug safety info:", error);
+    return null;
+  }
+}
+
+export async function checkDrugInteractions(
+  drug1: string,
+  drug2: string,
+): Promise<DrugInteraction[]> {
+  try {
+    // Search for interaction studies between the two drugs
+    const interactionTerms = [
+      `"${drug1}" AND "${drug2}" AND "interaction"`,
+      `"${drug1}" AND "${drug2}" AND "contraindication"`,
+      `"${drug1}" AND "${drug2}" AND "adverse"`,
+    ];
+
+    const interactions: DrugInteraction[] = [];
+
+    for (const term of interactionTerms) {
+      try {
+        const searchRes = await superagent
+          .get(`${PUBMED_API_BASE}/esearch.fcgi`)
+          .query({
+            db: "pubmed",
+            term: term,
+            retmode: "json",
+            retmax: 5,
+          })
+          .set("User-Agent", USER_AGENT);
+
+        const idList = searchRes.body.esearchresult?.idlist || [];
+        if (idList.length > 0) {
+          const fetchRes = await superagent
+            .get(`${PUBMED_API_BASE}/efetch.fcgi`)
+            .query({
+              db: "pubmed",
+              id: idList.join(","),
+              retmode: "xml",
+            })
+            .set("User-Agent", USER_AGENT);
+
+          const articles = parsePubMedXML(fetchRes.text);
+
+          for (const article of articles) {
+            const abstract = (article.abstract || "").toLowerCase();
+
+            if (
+              abstract.includes("interaction") ||
+              abstract.includes("contraindication")
+            ) {
+              let severity: "Minor" | "Moderate" | "Major" | "Contraindicated" =
+                "Moderate";
+
+              if (
+                abstract.includes("severe") ||
+                abstract.includes("major") ||
+                abstract.includes("contraindicated")
+              ) {
+                severity = abstract.includes("contraindicated")
+                  ? "Contraindicated"
+                  : "Major";
+              } else if (
+                abstract.includes("minor") ||
+                abstract.includes("mild")
+              ) {
+                severity = "Minor";
+              }
+
+              interactions.push({
+                drug1,
+                drug2,
+                severity,
+                description: `Interaction between ${drug1} and ${drug2}`,
+                clinical_effects:
+                  "See full prescribing information for details",
+                management:
+                  "Consult healthcare provider before combining medications",
+                evidence_level: "Literature Review",
+              });
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Error checking interactions for term: ${term}`, error);
+        continue;
+      }
+    }
+
+    return interactions;
+  } catch (error) {
+    console.error("Error checking drug interactions:", error);
+    return [];
+  }
+}
+
+// Diagnostic Support Functions
+export function generateDifferentialDiagnosis(
+  symptoms: string[],
+): DifferentialDiagnosis {
+  // This is a simplified implementation - in practice, you'd use a comprehensive
+  // medical knowledge base or AI model trained on clinical data
+
+  const symptomString = symptoms.join(" ").toLowerCase();
+
+  // Common differential diagnoses based on symptoms
+  const commonDiagnoses = {
+    "chest pain": [
+      {
+        diagnosis: "Myocardial Infarction",
+        probability: "High" as const,
+        key_findings: ["ST elevation", "Troponin elevation"],
+        next_steps: ["ECG", "Cardiac enzymes", "Chest X-ray"],
+      },
+      {
+        diagnosis: "Pulmonary Embolism",
+        probability: "Moderate" as const,
+        key_findings: ["Dyspnea", "Tachycardia"],
+        next_steps: ["D-dimer", "CT-PA", "Wells score"],
+      },
+      {
+        diagnosis: "GERD",
+        probability: "Moderate" as const,
+        key_findings: ["Heartburn", "Regurgitation"],
+        next_steps: ["PPI trial", "Endoscopy"],
+      },
+    ],
+    "abdominal pain": [
+      {
+        diagnosis: "Appendicitis",
+        probability: "High" as const,
+        key_findings: ["RLQ pain", "Rebound tenderness"],
+        next_steps: ["CT abdomen", "Surgical consult"],
+      },
+      {
+        diagnosis: "Cholecystitis",
+        probability: "Moderate" as const,
+        key_findings: ["RUQ pain", "Murphy's sign"],
+        next_steps: ["Ultrasound", "LFTs"],
+      },
+      {
+        diagnosis: "Gastroenteritis",
+        probability: "Moderate" as const,
+        key_findings: ["Nausea", "Vomiting", "Diarrhea"],
+        next_steps: ["Stool studies", "Supportive care"],
+      },
+    ],
+    headache: [
+      {
+        diagnosis: "Tension Headache",
+        probability: "High" as const,
+        key_findings: ["Bilateral", "Pressure-like"],
+        next_steps: ["Analgesics", "Stress management"],
+      },
+      {
+        diagnosis: "Migraine",
+        probability: "Moderate" as const,
+        key_findings: ["Unilateral", "Photophobia"],
+        next_steps: ["Triptans", "Preventive therapy"],
+      },
+      {
+        diagnosis: "Subarachnoid Hemorrhage",
+        probability: "Low" as const,
+        key_findings: ["Thunderclap onset", "Neck stiffness"],
+        next_steps: ["CT head", "LP if CT negative"],
+      },
+    ],
+  };
+
+  let possibleDiagnoses: {
+    diagnosis: string;
+    probability: "Low" | "Moderate" | "High";
+    key_findings: string[];
+    next_steps: string[];
+  }[] = [];
+  let redFlags: string[] = [];
+  let urgentConsiderations: string[] = [];
+
+  // Find matching diagnoses
+  for (const [symptomPattern, diagnoses] of Object.entries(commonDiagnoses)) {
+    if (symptomString.includes(symptomPattern)) {
+      possibleDiagnoses = diagnoses;
+      break;
+    }
+  }
+
+  // Add red flags based on symptoms
+  if (symptomString.includes("chest pain")) {
+    redFlags.push(
+      "Sudden onset",
+      "Radiation to arm/jaw",
+      "Diaphoresis",
+      "Nausea",
+    );
+    urgentConsiderations.push(
+      "Rule out MI",
+      "Consider PE",
+      "Assess vital signs",
+    );
+  }
+  if (symptomString.includes("abdominal pain")) {
+    redFlags.push("Severe pain", "Peritoneal signs", "Fever", "Vomiting");
+    urgentConsiderations.push(
+      "Rule out surgical emergency",
+      "Assess for peritonitis",
+    );
+  }
+  if (symptomString.includes("headache")) {
+    redFlags.push(
+      "Sudden onset",
+      "Worst headache of life",
+      "Fever",
+      "Neck stiffness",
+    );
+    urgentConsiderations.push("Rule out SAH", "Assess for meningitis");
+  }
+
+  return {
+    symptoms,
+    possible_diagnoses: possibleDiagnoses,
+    red_flags: redFlags,
+    urgent_considerations: urgentConsiderations,
+  };
+}
+
+export function getRiskCalculators(): RiskCalculator[] {
+  return [
+    {
+      name: "APGAR Score",
+      description:
+        "Assessment of newborn's physical condition at 1 and 5 minutes after birth",
+      parameters: [
+        {
+          name: "Appearance (Color)",
+          type: "select",
+          options: [
+            "0 - Blue/pale",
+            "1 - Body pink, extremities blue",
+            "2 - Completely pink",
+          ],
+          required: true,
+        },
+        {
+          name: "Pulse (Heart Rate)",
+          type: "select",
+          options: ["0 - Absent", "1 - <100 bpm", "2 - >100 bpm"],
+          required: true,
+        },
+        {
+          name: "Grimace (Reflex Irritability)",
+          type: "select",
+          options: [
+            "0 - No response",
+            "1 - Grimace",
+            "2 - Cry or active withdrawal",
+          ],
+          required: true,
+        },
+        {
+          name: "Activity (Muscle Tone)",
+          type: "select",
+          options: ["0 - Flaccid", "1 - Some flexion", "2 - Active motion"],
+          required: true,
+        },
+        {
+          name: "Respiration (Breathing)",
+          type: "select",
+          options: ["0 - Absent", "1 - Slow/irregular", "2 - Good, crying"],
+          required: true,
+        },
+      ],
+      calculation: "Sum of all parameters (0-10)",
+      interpretation: {
+        low_risk: "7-10: Normal, routine care",
+        moderate_risk: "4-6: Some assistance needed, may need stimulation",
+        high_risk: "0-3: Immediate resuscitation required",
+      },
+      references: [
+        "American Academy of Pediatrics",
+        "Neonatal Resuscitation Program",
+      ],
+    },
+    {
+      name: "Bishop Score",
+      description: "Assessment of cervical readiness for labor induction",
+      parameters: [
+        { name: "Dilation (cm)", type: "number", required: true },
+        { name: "Effacement (%)", type: "number", required: true },
+        {
+          name: "Station",
+          type: "select",
+          options: ["-3", "-2", "-1", "0", "+1", "+2", "+3"],
+          required: true,
+        },
+        {
+          name: "Consistency",
+          type: "select",
+          options: ["Firm", "Medium", "Soft"],
+          required: true,
+        },
+        {
+          name: "Position",
+          type: "select",
+          options: ["Posterior", "Mid", "Anterior"],
+          required: true,
+        },
+      ],
+      calculation: "Sum of all parameters (0-13)",
+      interpretation: {
+        low_risk: "0-4: Unfavorable for induction",
+        moderate_risk: "5-9: Moderate success rate",
+        high_risk: "10-13: Favorable for induction",
+      },
+      references: ["ACOG Practice Bulletin", "Obstetric Guidelines"],
+    },
+  ];
+}
+
+export function getLabValues(): LabValue[] {
+  return [
+    {
+      test_name: "Hemoglobin",
+      normal_ranges: [
+        {
+          age_group: "Adult",
+          male_range: "13.8-17.2",
+          female_range: "12.1-15.1",
+          units: "g/dL",
+        },
+        {
+          age_group: "Pregnancy",
+          pregnancy_status: "1st trimester",
+          male_range: "11.0-13.0",
+          female_range: "11.0-13.0",
+          units: "g/dL",
+        },
+        {
+          age_group: "Pregnancy",
+          pregnancy_status: "2nd trimester",
+          male_range: "10.5-14.0",
+          female_range: "10.5-14.0",
+          units: "g/dL",
+        },
+        {
+          age_group: "Pregnancy",
+          pregnancy_status: "3rd trimester",
+          male_range: "11.0-15.0",
+          female_range: "11.0-15.0",
+          units: "g/dL",
+        },
+        {
+          age_group: "Newborn",
+          male_range: "14.0-24.0",
+          female_range: "14.0-24.0",
+          units: "g/dL",
+        },
+      ],
+      critical_values: { low: "<7.0", high: ">20.0" },
+      interpretation: "Measures oxygen-carrying capacity of blood",
+      clinical_significance:
+        "Low values indicate anemia; high values may indicate polycythemia",
+    },
+    {
+      test_name: "White Blood Cell Count",
+      normal_ranges: [
+        {
+          age_group: "Adult",
+          male_range: "4.5-11.0",
+          female_range: "4.5-11.0",
+          units: "×10³/μL",
+        },
+        {
+          age_group: "Pregnancy",
+          pregnancy_status: "All trimesters",
+          male_range: "5.7-13.6",
+          female_range: "5.7-13.6",
+          units: "×10³/μL",
+        },
+        {
+          age_group: "Newborn",
+          male_range: "9.0-30.0",
+          female_range: "9.0-30.0",
+          units: "×10³/μL",
+        },
+      ],
+      critical_values: { low: "<2.0", high: ">30.0" },
+      interpretation: "Measures immune system cell count",
+      clinical_significance:
+        "Low values indicate immunosuppression; high values suggest infection or inflammation",
+    },
+  ];
+}
+
+export function getDiagnosticCriteria(
+  condition: string,
+): DiagnosticCriteria | null {
+  const criteriaDatabase: { [key: string]: DiagnosticCriteria } = {
+    "major depressive disorder": {
+      condition: "Major Depressive Disorder",
+      criteria_sets: [
+        {
+          name: "DSM-5 Criteria",
+          source:
+            "Diagnostic and Statistical Manual of Mental Disorders, 5th Edition",
+          criteria: [
+            {
+              category: "Core Symptoms",
+              items: [
+                "Depressed mood most of the day, nearly every day",
+                "Markedly diminished interest or pleasure in activities",
+              ],
+              required_count: 1,
+            },
+            {
+              category: "Additional Symptoms",
+              items: [
+                "Significant weight loss or gain",
+                "Insomnia or hypersomnia",
+                "Psychomotor agitation or retardation",
+                "Fatigue or loss of energy",
+                "Feelings of worthlessness or guilt",
+                "Diminished ability to think or concentrate",
+                "Recurrent thoughts of death or suicide",
+              ],
+              required_count: 4,
+            },
+          ],
+        },
+      ],
+      differential_diagnosis: [
+        "Bipolar Disorder",
+        "Persistent Depressive Disorder",
+        "Adjustment Disorder",
+        "Substance-Induced Mood Disorder",
+        "Medical Condition-Related Depression",
+      ],
+      red_flags: [
+        "Suicidal ideation",
+        "Psychotic features",
+        "Catatonic features",
+        "Melancholic features",
+      ],
+    },
+    preeclampsia: {
+      condition: "Preeclampsia",
+      criteria_sets: [
+        {
+          name: "ACOG Criteria",
+          source: "American College of Obstetricians and Gynecologists",
+          criteria: [
+            {
+              category: "Required",
+              items: [
+                "Systolic BP ≥140 mmHg or diastolic BP ≥90 mmHg on two occasions at least 4 hours apart",
+                "Proteinuria ≥300 mg/24 hours or protein/creatinine ratio ≥0.3",
+              ],
+              required_count: 2,
+            },
+            {
+              category: "Severe Features",
+              items: [
+                "Systolic BP ≥160 mmHg or diastolic BP ≥110 mmHg",
+                "Thrombocytopenia (<100,000/μL)",
+                "Impaired liver function (elevated transaminases)",
+                "Progressive renal insufficiency",
+                "Pulmonary edema",
+                "New-onset headache or visual disturbances",
+              ],
+              required_count: 0,
+            },
+          ],
+        },
+      ],
+      differential_diagnosis: [
+        "Chronic Hypertension",
+        "Gestational Hypertension",
+        "HELLP Syndrome",
+        "Eclampsia",
+        "Other causes of proteinuria",
+      ],
+      red_flags: [
+        "Severe hypertension",
+        "Severe headache",
+        "Visual changes",
+        "Epigastric pain",
+        "Decreased urine output",
+        "Altered mental status",
+      ],
+    },
+  };
+
+  return criteriaDatabase[condition.toLowerCase()] || null;
 }

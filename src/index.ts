@@ -10,6 +10,12 @@ import {
   searchGoogleScholar,
   getPubMedArticleByPMID,
   searchClinicalGuidelines,
+  getDrugSafetyInfo,
+  checkDrugInteractions,
+  generateDifferentialDiagnosis,
+  getRiskCalculators,
+  getLabValues,
+  getDiagnosticCriteria,
 } from "./utils.js";
 
 const server = new McpServer({
@@ -556,6 +562,453 @@ server.tool(
           {
             type: "text",
             text: `Error searching clinical guidelines: ${error.message || "Unknown error"}`,
+          },
+        ],
+      };
+    }
+  },
+);
+
+// Drug Safety Tools
+server.tool(
+  "get-drug-safety-info",
+  "Get comprehensive drug safety information including pregnancy and lactation categories",
+  {
+    drug_name: z
+      .string()
+      .describe("Name of the drug to check for safety information"),
+  },
+  async ({ drug_name }) => {
+    try {
+      const safetyInfo = await getDrugSafetyInfo(drug_name);
+
+      if (!safetyInfo) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `No safety information found for "${drug_name}". This may be due to limited data availability or the drug name not being recognized.`,
+            },
+          ],
+        };
+      }
+
+      let result = `**Drug Safety Information: ${safetyInfo.drug_name}**\n\n`;
+
+      result += `**Pregnancy Safety:**\n`;
+      result += `- FDA Category: ${safetyInfo.pregnancy_category}\n`;
+      if (safetyInfo.pregnancy_category === "A") {
+        result += `  ✅ Safe - Adequate studies show no risk to fetus\n`;
+      } else if (safetyInfo.pregnancy_category === "B") {
+        result += `  ⚠️  Generally Safe - Animal studies show no risk, limited human data\n`;
+      } else if (safetyInfo.pregnancy_category === "C") {
+        result += `  ⚠️  Use with Caution - Animal studies show adverse effects, limited human data\n`;
+      } else if (safetyInfo.pregnancy_category === "D") {
+        result += `  ❌ Risk - Evidence of human fetal risk, use only if benefits justify risk\n`;
+      } else if (safetyInfo.pregnancy_category === "X") {
+        result += `  ❌ Contraindicated - Studies show fetal abnormalities, contraindicated in pregnancy\n`;
+      } else {
+        result += `  ❓ Not Classified - Insufficient data available\n`;
+      }
+
+      result += `\n**Lactation Safety:**\n`;
+      result += `- Breastfeeding: ${safetyInfo.lactation_safety}\n`;
+      if (safetyInfo.lactation_safety === "Safe") {
+        result += `  ✅ Safe for breastfeeding\n`;
+      } else if (safetyInfo.lactation_safety === "Caution") {
+        result += `  ⚠️  Use with caution, monitor infant\n`;
+      } else if (safetyInfo.lactation_safety === "Avoid") {
+        result += `  ❌ Avoid during breastfeeding\n`;
+      } else {
+        result += `  ❓ Unknown safety profile\n`;
+      }
+
+      if (
+        safetyInfo.contraindications &&
+        safetyInfo.contraindications.length > 0
+      ) {
+        result += `\n**Contraindications:**\n`;
+        safetyInfo.contraindications.forEach((contraindication, index) => {
+          result += `${index + 1}. ${contraindication}\n`;
+        });
+      }
+
+      if (safetyInfo.warnings && safetyInfo.warnings.length > 0) {
+        result += `\n**Warnings:**\n`;
+        safetyInfo.warnings.forEach((warning, index) => {
+          result += `${index + 1}. ${warning}\n`;
+        });
+      }
+
+      if (
+        safetyInfo.monitoring_requirements &&
+        safetyInfo.monitoring_requirements.length > 0
+      ) {
+        result += `\n**Monitoring Requirements:**\n`;
+        safetyInfo.monitoring_requirements.forEach((requirement, index) => {
+          result += `${index + 1}. ${requirement}\n`;
+        });
+      }
+
+      if (
+        safetyInfo.alternative_drugs &&
+        safetyInfo.alternative_drugs.length > 0
+      ) {
+        result += `\n**Alternative Drugs:**\n`;
+        safetyInfo.alternative_drugs.forEach((drug, index) => {
+          result += `${index + 1}. ${drug}\n`;
+        });
+      }
+
+      result += `\n**Last Updated:** ${new Date(safetyInfo.last_updated).toLocaleDateString()}\n`;
+      result += `\n⚠️  **Important:** This information is for educational purposes only. Always consult with a healthcare provider for personalized medical advice.`;
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: result,
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error fetching drug safety information: ${error.message || "Unknown error"}`,
+          },
+        ],
+      };
+    }
+  },
+);
+
+server.tool(
+  "check-drug-interactions",
+  "Check for potential drug-drug interactions between two medications",
+  {
+    drug1: z.string().describe("First drug name"),
+    drug2: z.string().describe("Second drug name"),
+  },
+  async ({ drug1, drug2 }) => {
+    try {
+      const interactions = await checkDrugInteractions(drug1, drug2);
+
+      if (interactions.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `No known interactions found between "${drug1}" and "${drug2}". However, this does not guarantee safety - always consult with a healthcare provider before combining medications.`,
+            },
+          ],
+        };
+      }
+
+      let result = `**Drug Interaction Check: ${drug1} + ${drug2}**\n\n`;
+      result += `Found ${interactions.length} potential interaction(s)\n\n`;
+
+      interactions.forEach((interaction, index) => {
+        result += `${index + 1}. **${interaction.drug1} + ${interaction.drug2}**\n`;
+        result += `   Severity: `;
+
+        if (interaction.severity === "Contraindicated") {
+          result += `❌ **CONTRAINDICATED**\n`;
+        } else if (interaction.severity === "Major") {
+          result += `🔴 **MAJOR**\n`;
+        } else if (interaction.severity === "Moderate") {
+          result += `🟡 **MODERATE**\n`;
+        } else {
+          result += `🟢 **MINOR**\n`;
+        }
+
+        result += `   Description: ${interaction.description}\n`;
+        result += `   Clinical Effects: ${interaction.clinical_effects}\n`;
+        result += `   Management: ${interaction.management}\n`;
+        result += `   Evidence Level: ${interaction.evidence_level}\n\n`;
+      });
+
+      result += `⚠️  **Important:** This information is for educational purposes only. Always consult with a healthcare provider before combining medications.`;
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: result,
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error checking drug interactions: ${error.message || "Unknown error"}`,
+          },
+        ],
+      };
+    }
+  },
+);
+
+// Diagnostic Support Tools
+server.tool(
+  "generate-differential-diagnosis",
+  "Generate differential diagnosis based on presenting symptoms",
+  {
+    symptoms: z
+      .array(z.string())
+      .min(1)
+      .describe("List of symptoms or presenting complaints"),
+  },
+  async ({ symptoms }) => {
+    try {
+      const differential = generateDifferentialDiagnosis(symptoms);
+
+      let result = `**Differential Diagnosis Generator**\n\n`;
+      result += `**Presenting Symptoms:** ${symptoms.join(", ")}\n\n`;
+
+      if (differential.possible_diagnoses.length > 0) {
+        result += `**Possible Diagnoses:**\n`;
+        differential.possible_diagnoses.forEach((diagnosis, index) => {
+          result += `${index + 1}. **${diagnosis.diagnosis}**\n`;
+          result += `   Probability: `;
+          if (diagnosis.probability === "High") {
+            result += `🔴 **HIGH**\n`;
+          } else if (diagnosis.probability === "Moderate") {
+            result += `🟡 **MODERATE**\n`;
+          } else {
+            result += `🟢 **LOW**\n`;
+          }
+          result += `   Key Findings: ${diagnosis.key_findings.join(", ")}\n`;
+          result += `   Next Steps: ${diagnosis.next_steps.join(", ")}\n\n`;
+        });
+      }
+
+      if (differential.red_flags.length > 0) {
+        result += `**🚨 Red Flags to Watch For:**\n`;
+        differential.red_flags.forEach((flag, index) => {
+          result += `${index + 1}. ${flag}\n`;
+        });
+        result += "\n";
+      }
+
+      if (differential.urgent_considerations.length > 0) {
+        result += `**⚡ Urgent Considerations:**\n`;
+        differential.urgent_considerations.forEach((consideration, index) => {
+          result += `${index + 1}. ${consideration}\n`;
+        });
+        result += "\n";
+      }
+
+      result += `⚠️  **Important:** This is a simplified diagnostic aid. Always perform a thorough clinical assessment and consider all possibilities. This tool is not a substitute for clinical judgment.`;
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: result,
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error generating differential diagnosis: ${error.message || "Unknown error"}`,
+          },
+        ],
+      };
+    }
+  },
+);
+
+server.tool(
+  "get-risk-calculators",
+  "Get available medical risk calculators and scoring systems",
+  {},
+  async () => {
+    try {
+      const calculators = getRiskCalculators();
+
+      let result = `**Available Medical Risk Calculators**\n\n`;
+      result += `Found ${calculators.length} calculator(s)\n\n`;
+
+      calculators.forEach((calculator, index) => {
+        result += `${index + 1}. **${calculator.name}**\n`;
+        result += `   Description: ${calculator.description}\n`;
+        result += `   Parameters: ${calculator.parameters.length} required\n`;
+        result += `   Calculation: ${calculator.calculation}\n`;
+        result += `   Interpretation:\n`;
+        result += `   - Low Risk: ${calculator.interpretation.low_risk}\n`;
+        result += `   - Moderate Risk: ${calculator.interpretation.moderate_risk}\n`;
+        result += `   - High Risk: ${calculator.interpretation.high_risk}\n`;
+        result += `   References: ${calculator.references.join(", ")}\n\n`;
+      });
+
+      result += `**How to Use:**\n`;
+      result += `1. Select the appropriate calculator for your clinical scenario\n`;
+      result += `2. Gather the required parameters from your patient assessment\n`;
+      result += `3. Calculate the score using the provided formula\n`;
+      result += `4. Interpret the results according to the risk categories\n\n`;
+      result += `⚠️  **Important:** These calculators are clinical decision support tools. Always use them in conjunction with clinical judgment and consider individual patient factors.`;
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: result,
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error fetching risk calculators: ${error.message || "Unknown error"}`,
+          },
+        ],
+      };
+    }
+  },
+);
+
+server.tool(
+  "get-lab-values",
+  "Get normal lab value ranges by age group and pregnancy status",
+  {},
+  async () => {
+    try {
+      const labValues = getLabValues();
+
+      let result = `**Laboratory Value Reference**\n\n`;
+      result += `Available for ${labValues.length} test(s)\n\n`;
+
+      labValues.forEach((lab, index) => {
+        result += `${index + 1}. **${lab.test_name}**\n`;
+        result += `   Interpretation: ${lab.interpretation}\n`;
+        result += `   Clinical Significance: ${lab.clinical_significance}\n`;
+        result += `   Critical Values: Low < ${lab.critical_values.low}, High > ${lab.critical_values.high}\n\n`;
+
+        result += `   **Normal Ranges by Age/Pregnancy Status:**\n`;
+        lab.normal_ranges.forEach((range) => {
+          result += `   - ${range.age_group}`;
+          if (range.pregnancy_status) {
+            result += ` (${range.pregnancy_status})`;
+          }
+          result += `: `;
+          if (range.male_range && range.female_range) {
+            result += `Male: ${range.male_range}, Female: ${range.female_range}`;
+          } else if (range.male_range) {
+            result += `${range.male_range}`;
+          } else if (range.female_range) {
+            result += `${range.female_range}`;
+          }
+          result += ` ${range.units}\n`;
+        });
+        result += "\n";
+      });
+
+      result += `⚠️  **Important:** Normal ranges may vary between laboratories. Always refer to your local lab's reference ranges. These values are for general guidance only.`;
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: result,
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error fetching lab values: ${error.message || "Unknown error"}`,
+          },
+        ],
+      };
+    }
+  },
+);
+
+server.tool(
+  "get-diagnostic-criteria",
+  "Get diagnostic criteria for specific medical conditions",
+  {
+    condition: z
+      .string()
+      .describe("Medical condition to get diagnostic criteria for"),
+  },
+  async ({ condition }) => {
+    try {
+      const criteria = getDiagnosticCriteria(condition);
+
+      if (!criteria) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `No diagnostic criteria found for "${condition}". Available conditions include: Major Depressive Disorder, Preeclampsia. Try one of these or check the spelling.`,
+            },
+          ],
+        };
+      }
+
+      let result = `**Diagnostic Criteria: ${criteria.condition}**\n\n`;
+
+      criteria.criteria_sets.forEach((criteriaSet, index) => {
+        result += `**${criteriaSet.name}** (${criteriaSet.source})\n\n`;
+
+        criteriaSet.criteria.forEach((criterion, criterionIndex) => {
+          result += `${criterionIndex + 1}. **${criterion.category}**\n`;
+          if (criterion.required_count !== undefined) {
+            result += `   Required: ${criterion.required_count} of the following:\n`;
+          } else {
+            result += `   Items:\n`;
+          }
+          criterion.items.forEach((item, itemIndex) => {
+            result += `   ${itemIndex + 1}. ${item}\n`;
+          });
+          result += "\n";
+        });
+      });
+
+      if (criteria.differential_diagnosis.length > 0) {
+        result += `**Differential Diagnosis:**\n`;
+        criteria.differential_diagnosis.forEach((diagnosis, index) => {
+          result += `${index + 1}. ${diagnosis}\n`;
+        });
+        result += "\n";
+      }
+
+      if (criteria.red_flags.length > 0) {
+        result += `**🚨 Red Flags:**\n`;
+        criteria.red_flags.forEach((flag, index) => {
+          result += `${index + 1}. ${flag}\n`;
+        });
+        result += "\n";
+      }
+
+      result += `⚠️  **Important:** These criteria are for clinical reference only. Always use them in conjunction with clinical judgment and consider individual patient factors.`;
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: result,
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error fetching diagnostic criteria: ${error.message || "Unknown error"}`,
           },
         ],
       };

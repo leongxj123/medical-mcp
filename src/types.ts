@@ -75,3 +75,88 @@ export type ClinicalGuideline = {
   category?: string;
   evidence_level?: string;
 };
+
+// Drug Safety Types
+export type DrugSafetyInfo = {
+  drug_name: string;
+  pregnancy_category?: string; // A, B, C, D, X, or N (not classified)
+  lactation_safety?: string; // Safe, Caution, Avoid, or Unknown
+  contraindications?: string[];
+  warnings?: string[];
+  monitoring_requirements?: string[];
+  alternative_drugs?: string[];
+  last_updated: string;
+};
+
+export type DrugInteraction = {
+  drug1: string;
+  drug2: string;
+  severity: "Minor" | "Moderate" | "Major" | "Contraindicated";
+  description: string;
+  clinical_effects: string;
+  management: string;
+  evidence_level: string;
+};
+
+// Diagnostic Support Types
+export type DifferentialDiagnosis = {
+  symptoms: string[];
+  possible_diagnoses: {
+    diagnosis: string;
+    probability: "Low" | "Moderate" | "High";
+    key_findings: string[];
+    next_steps: string[];
+  }[];
+  red_flags: string[];
+  urgent_considerations: string[];
+};
+
+export type RiskCalculator = {
+  name: string;
+  description: string;
+  parameters: {
+    name: string;
+    type: "number" | "boolean" | "select";
+    options?: string[];
+    required: boolean;
+  }[];
+  calculation: string;
+  interpretation: {
+    low_risk: string;
+    moderate_risk: string;
+    high_risk: string;
+  };
+  references: string[];
+};
+
+export type LabValue = {
+  test_name: string;
+  normal_ranges: {
+    age_group: string;
+    pregnancy_status?: string;
+    male_range?: string;
+    female_range?: string;
+    units: string;
+  }[];
+  critical_values: {
+    low: string;
+    high: string;
+  };
+  interpretation: string;
+  clinical_significance: string;
+};
+
+export type DiagnosticCriteria = {
+  condition: string;
+  criteria_sets: {
+    name: string;
+    source: string;
+    criteria: {
+      category: string;
+      items: string[];
+      required_count?: number;
+    }[];
+  }[];
+  differential_diagnosis: string[];
+  red_flags: string[];
+};
