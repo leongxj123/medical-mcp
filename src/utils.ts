@@ -54,11 +54,8 @@ export async function getHealthIndicators(
   country?: string,
 ): Promise<WHOIndicator[]> {
   try {
-    // First try exact match
-    let filter = `IndicatorName eq '${indicatorName}'`;
-    if (country) {
-      filter += ` and SpatialDim eq '${country}'`;
-    }
+    // First, find the indicator code by searching for the indicator name
+    let filter = `contains(IndicatorName, '${indicatorName}')`;
 
     let res = await superagent
       .get(`${WHO_API_BASE}/Indicator`)
@@ -68,34 +65,13 @@ export async function getHealthIndicators(
       })
       .set("User-Agent", USER_AGENT);
 
-    let results = res.body.value || [];
+    let indicators = res.body.value || [];
 
-    // If no exact match, try partial match
-    if (results.length === 0) {
-      filter = `contains(IndicatorName, '${indicatorName}')`;
-      if (country) {
-        filter += ` and SpatialDim eq '${country}'`;
-      }
-
-      res = await superagent
-        .get(`${WHO_API_BASE}/Indicator`)
-        .query({
-          $filter: filter,
-          $format: "json",
-        })
-        .set("User-Agent", USER_AGENT);
-
-      results = res.body.value || [];
-    }
-
-    // If still no results, try common variations
-    if (results.length === 0) {
+    // If no results, try common variations
+    if (indicators.length === 0) {
       const variations = getIndicatorVariations(indicatorName);
       for (const variation of variations) {
         filter = `contains(IndicatorName, '${variation}')`;
-        if (country) {
-          filter += ` and SpatialDim eq '${country}'`;
-        }
 
         res = await superagent
           .get(`${WHO_API_BASE}/Indicator`)
@@ -107,9 +83,108 @@ export async function getHealthIndicators(
 
         const variationResults = res.body.value || [];
         if (variationResults.length > 0) {
-          results = variationResults;
+          indicators = variationResults;
           break;
         }
+      }
+    }
+
+    if (indicators.length === 0) {
+      return [];
+    }
+
+    // Now fetch actual data for each indicator
+    const results: WHOIndicator[] = [];
+
+    for (const indicator of indicators.slice(0, 3)) {
+      // Limit to first 3 indicators
+      try {
+        const indicatorCode = indicator.IndicatorCode;
+        let dataFilter = "";
+        if (country) {
+          dataFilter = `SpatialDim eq '${country}'`;
+        }
+
+        const queryParams: any = {
+          $format: "json",
+          $top: 50, // Limit results
+        };
+
+        if (dataFilter) {
+          queryParams.$filter = dataFilter;
+        }
+
+        const dataRes = await superagent
+          .get(`${WHO_API_BASE}/${indicatorCode}`)
+          .query(queryParams)
+          .set("User-Agent", USER_AGENT);
+
+        const dataValues = dataRes.body.value || [];
+
+        // Group data by country and get the most recent values
+        const countryData = new Map();
+        dataValues.forEach((item: any) => {
+          const country = item.SpatialDim || "Global";
+          const year = item.TimeDim || "Unknown";
+          const value = item.NumericValue;
+
+          if (value !== null && value !== undefined) {
+            if (
+              !countryData.has(country) ||
+              year > countryData.get(country).year
+            ) {
+              countryData.set(country, {
+                country,
+                year,
+                value,
+                indicator: indicator.IndicatorName,
+                unit: item.Unit || "Unknown",
+              });
+            }
+          }
+        });
+
+        // Add the data to results
+        countryData.forEach((data) => {
+          results.push({
+            IndicatorCode: indicator.IndicatorCode,
+            IndicatorName: data.indicator,
+            SpatialDimType: "Country",
+            SpatialDim: data.country,
+            TimeDim: data.year.toString(),
+            TimeDimType: "Year",
+            DataSourceDim: "WHO",
+            DataSourceType: "Official",
+            Value: data.value,
+            NumericValue: data.value,
+            Low: 0,
+            High: 0,
+            Comments: `Unit: ${data.unit}`,
+            Date: new Date().toISOString(),
+          });
+        });
+      } catch (dataError) {
+        console.error(
+          `Error fetching data for indicator ${indicator.IndicatorCode}:`,
+          dataError,
+        );
+        // Still add the indicator definition even if data fetch fails
+        results.push({
+          IndicatorCode: indicator.IndicatorCode,
+          IndicatorName: indicator.IndicatorName,
+          SpatialDimType: "Country",
+          SpatialDim: country || "Global",
+          TimeDim: "Unknown",
+          TimeDimType: "Year",
+          DataSourceDim: "WHO",
+          DataSourceType: "Official",
+          Value: 0,
+          NumericValue: 0,
+          Low: 0,
+          High: 0,
+          Comments: "Data not available",
+          Date: new Date().toISOString(),
+        });
       }
     }
 
@@ -366,7 +441,7 @@ export async function searchPubMedArticles(
 }
 
 // Enhanced PubMed XML parser
-function parsePubMedXML(xmlText: string): PubMedArticle[] {
+export function parsePubMedXML(xmlText: string): PubMedArticle[] {
   const articles: PubMedArticle[] = [];
 
   // Split by article boundaries
@@ -503,13 +578,20 @@ export async function searchClinicalGuidelines(
   organization?: string,
 ): Promise<ClinicalGuideline[]> {
   try {
-    // This is a simplified implementation that searches PubMed for guidelines
-    // In a real implementation, you would integrate with specific guideline databases
+    // Enhanced search strategy with broader terms and specific guideline databases
     const searchTerms = [
-      `"clinical guidelines" AND ${query}`,
-      `"practice guidelines" AND ${query}`,
-      `"consensus statement" AND ${query}`,
-      `"clinical recommendations" AND ${query}`,
+      `guidelines ${query}`,
+      `recommendations ${query}`,
+      `consensus ${query}`,
+      `position statement ${query}`,
+      `evidence-based ${query}`,
+      `best practice ${query}`,
+      `American Heart Association ${query}`,
+      `American College of Cardiology ${query}`,
+      `American Diabetes Association ${query}`,
+      `American College of Physicians ${query}`,
+      `WHO guidelines ${query}`,
+      `CDC guidelines ${query}`,
     ];
 
     const allGuidelines: ClinicalGuideline[] = [];
@@ -522,8 +604,7 @@ export async function searchClinicalGuidelines(
             db: "pubmed",
             term: searchTerm,
             retmode: "json",
-            retmax: 5,
-            field: "title,abstract",
+            retmax: 10, // Increased from 5
           })
           .set("User-Agent", USER_AGENT);
 
@@ -543,34 +624,73 @@ export async function searchClinicalGuidelines(
         const articles = parsePubMedXML(fetchRes.text);
 
         for (const article of articles) {
-          // Check if this looks like a guideline
+          // More flexible guideline detection
           const title = article.title.toLowerCase();
-          const abstract = article.abstract.toLowerCase();
+          const abstract = (article.abstract || "").toLowerCase();
 
-          if (
+          const isGuideline =
             title.includes("guideline") ||
             title.includes("recommendation") ||
             title.includes("consensus") ||
+            title.includes("position statement") ||
+            title.includes("expert consensus") ||
+            title.includes("best practice") ||
+            title.includes("evidence-based") ||
             abstract.includes("guideline") ||
-            abstract.includes("recommendation")
-          ) {
-            // Extract organization from journal or abstract
+            abstract.includes("recommendation") ||
+            abstract.includes("consensus") ||
+            abstract.includes("position statement");
+
+          if (isGuideline) {
+            // Extract organization from journal, abstract, or title
             let org = "Unknown Organization";
+
+            // Try to extract from journal first
             if (article.journal) {
               org = article.journal;
-            } else if (article.abstract) {
-              const orgMatch = article.abstract.match(
-                /([A-Z][a-z]+ [A-Z][a-z]+ (?:Society|Association|College|Institute|Foundation|Organization|Committee))/,
-              );
-              if (orgMatch) {
-                org = orgMatch[1];
+            }
+
+            // Try to extract from abstract
+            if (article.abstract) {
+              const orgPatterns = [
+                /([A-Z][a-z]+ [A-Z][a-z]+ (?:Society|Association|College|Institute|Foundation|Organization|Committee|Academy))/,
+                /(American [A-Z][a-z]+ (?:Society|Association|College|Institute|Foundation|Organization|Committee|Academy))/,
+                /(World Health Organization|WHO)/,
+                /(Centers for Disease Control|CDC)/,
+                /(National [A-Z][a-z]+ (?:Institute|Institute of Health|Academy))/,
+              ];
+
+              for (const pattern of orgPatterns) {
+                const match = article.abstract.match(pattern);
+                if (match) {
+                  org = match[1];
+                  break;
+                }
+              }
+            }
+
+            // Try to extract from title
+            if (org === "Unknown Organization") {
+              const titleOrgPatterns = [
+                /(American [A-Z][a-z]+ (?:Society|Association|College|Institute|Foundation|Organization|Committee|Academy))/,
+                /(World Health Organization|WHO)/,
+                /(Centers for Disease Control|CDC)/,
+              ];
+
+              for (const pattern of titleOrgPatterns) {
+                const match = article.title.match(pattern);
+                if (match) {
+                  org = match[1];
+                  break;
+                }
               }
             }
 
             // Skip if organization filter is specified and doesn't match
             if (
               organization &&
-              !org.toLowerCase().includes(organization.toLowerCase())
+              !org.toLowerCase().includes(organization.toLowerCase()) &&
+              !article.title.toLowerCase().includes(organization.toLowerCase())
             ) {
               continue;
             }
@@ -581,33 +701,81 @@ export async function searchClinicalGuidelines(
 
             // Determine category based on content
             let category = "General";
-            if (title.includes("cardiology") || abstract.includes("cardiac"))
+            if (
+              title.includes("cardiology") ||
+              abstract.includes("cardiac") ||
+              abstract.includes("heart")
+            )
               category = "Cardiology";
-            else if (title.includes("oncology") || abstract.includes("cancer"))
+            else if (
+              title.includes("oncology") ||
+              abstract.includes("cancer") ||
+              abstract.includes("tumor")
+            )
               category = "Oncology";
-            else if (title.includes("diabetes")) category = "Endocrinology";
-            else if (title.includes("hypertension")) category = "Cardiology";
+            else if (
+              title.includes("diabetes") ||
+              abstract.includes("diabetes")
+            )
+              category = "Endocrinology";
+            else if (
+              title.includes("hypertension") ||
+              abstract.includes("hypertension") ||
+              abstract.includes("blood pressure")
+            )
+              category = "Cardiology";
             else if (
               title.includes("infectious") ||
-              abstract.includes("infection")
+              abstract.includes("infection") ||
+              abstract.includes("infectious")
             )
               category = "Infectious Diseases";
+            else if (
+              title.includes("pediatric") ||
+              abstract.includes("pediatric") ||
+              abstract.includes("children")
+            )
+              category = "Pediatrics";
+            else if (
+              title.includes("mental") ||
+              abstract.includes("mental") ||
+              abstract.includes("psychiatric")
+            )
+              category = "Psychiatry";
+
+            // Determine evidence level
+            let evidenceLevel = "Systematic Review/Consensus";
+            if (
+              title.includes("meta-analysis") ||
+              abstract.includes("meta-analysis")
+            )
+              evidenceLevel = "Meta-analysis";
+            else if (
+              title.includes("systematic review") ||
+              abstract.includes("systematic review")
+            )
+              evidenceLevel = "Systematic Review";
+            else if (
+              title.includes("randomized") ||
+              abstract.includes("randomized")
+            )
+              evidenceLevel = "Randomized Controlled Trial";
 
             allGuidelines.push({
               title: article.title,
               organization: org,
               year: year,
               url: `https://pubmed.ncbi.nlm.nih.gov/${article.pmid}/`,
-              description: article.abstract.substring(0, 200) + "...",
+              description: (article.abstract || "").substring(0, 200) + "...",
               category: category,
-              evidence_level: "Systematic Review/Consensus",
+              evidence_level: evidenceLevel,
             });
           }
         }
       } catch (error) {
         console.error(
           `Error searching for guidelines with term: ${searchTerm}`,
-          error,
+          error instanceof Error ? error.message : String(error),
         );
         continue;
       }
@@ -624,7 +792,7 @@ export async function searchClinicalGuidelines(
         ),
     );
 
-    return uniqueGuidelines.slice(0, 10); // Limit to 10 results
+    return uniqueGuidelines.slice(0, 15); // Increased limit to 15 results
   } catch (error) {
     console.error("Error searching clinical guidelines:", error);
     return [];
