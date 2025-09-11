@@ -952,7 +952,7 @@ server.tool(
           content: [
             {
               type: "text",
-              text: `No diagnostic criteria found for "${condition}". Available conditions include: Major Depressive Disorder, Preeclampsia. Try one of these or check the spelling.`,
+              text: `No diagnostic criteria found for "${condition}". Available conditions include: Major Depressive Disorder, Preeclampsia, Type 2 Diabetes Mellitus, Hypertension, COPD, Myocardial Infarction, Pneumonia. Try one of these or check the spelling.`,
             },
           ],
         };

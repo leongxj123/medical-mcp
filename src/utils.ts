@@ -150,8 +150,27 @@ export async function getHealthIndicators(
           }
         });
 
-        // Add the data to results
+        // Add the data to results with better formatting
         countryData.forEach((data) => {
+          // Format the value based on the indicator type
+          let formattedValue = data.value;
+          let unit = data.unit || "Unknown";
+          
+          // Add context based on indicator name
+          if (data.indicator.toLowerCase().includes("life expectancy")) {
+            unit = "years";
+            formattedValue = `${data.value} years`;
+          } else if (data.indicator.toLowerCase().includes("mortality")) {
+            unit = "per 1000 population";
+            formattedValue = `${data.value} per 1000`;
+          } else if (data.indicator.toLowerCase().includes("prevalence")) {
+            unit = "%";
+            formattedValue = `${data.value}%`;
+          } else if (data.indicator.toLowerCase().includes("incidence")) {
+            unit = "per 100,000 population";
+            formattedValue = `${data.value} per 100,000`;
+          }
+
           results.push({
             IndicatorCode: indicator.IndicatorCode,
             IndicatorName: data.indicator,
@@ -161,11 +180,11 @@ export async function getHealthIndicators(
             TimeDimType: "Year",
             DataSourceDim: "WHO",
             DataSourceType: "Official",
-            Value: data.value,
+            Value: formattedValue,
             NumericValue: data.value,
             Low: 0,
             High: 0,
-            Comments: `Unit: ${data.unit}`,
+            Comments: `Unit: ${unit} | Year: ${data.year}`,
             Date: new Date().toISOString(),
           });
         });
@@ -1244,6 +1263,80 @@ export function getRiskCalculators(): RiskCalculator[] {
       },
       references: ["ACOG Practice Bulletin", "Obstetric Guidelines"],
     },
+    {
+      name: "ASCVD Risk Calculator",
+      description: "10-year atherosclerotic cardiovascular disease risk assessment",
+      parameters: [
+        { name: "Age (years)", type: "number", required: true },
+        { name: "Gender", type: "select", options: ["Male", "Female"], required: true },
+        { name: "Race", type: "select", options: ["White", "African American", "Other"], required: true },
+        { name: "Total Cholesterol (mg/dL)", type: "number", required: true },
+        { name: "HDL Cholesterol (mg/dL)", type: "number", required: true },
+        { name: "Systolic BP (mmHg)", type: "number", required: true },
+        { name: "Diabetes", type: "boolean", required: true },
+        { name: "Smoker", type: "boolean", required: true },
+        { name: "On BP medication", type: "boolean", required: true },
+      ],
+      calculation: "Complex formula based on Pooled Cohort Equations",
+      interpretation: {
+        low_risk: "<5%: Low risk, lifestyle counseling",
+        moderate_risk: "5-7.4%: Borderline risk, consider statin",
+        high_risk: "≥7.5%: High risk, statin therapy recommended",
+      },
+      references: ["2018 AHA/ACC/AACVPR/AAPA/ABC/ACPM/ADA/AGS/APhA/ASPC/NLA/PCNA Guideline"],
+    },
+    {
+      name: "eGFR Calculator",
+      description: "Estimated glomerular filtration rate using CKD-EPI equation",
+      parameters: [
+        { name: "Age (years)", type: "number", required: true },
+        { name: "Gender", type: "select", options: ["Male", "Female"], required: true },
+        { name: "Race", type: "select", options: ["Black", "Non-Black"], required: true },
+        { name: "Serum Creatinine (mg/dL)", type: "number", required: true },
+      ],
+      calculation: "CKD-EPI equation: 141 × min(Scr/κ, 1)^α × max(Scr/κ, 1)^-1.209 × 0.993^Age × 1.018 [if female] × 1.159 [if Black]",
+      interpretation: {
+        low_risk: "≥90: Normal or high",
+        moderate_risk: "60-89: Mildly decreased",
+        high_risk: "<60: Moderately to severely decreased",
+      },
+      references: ["CKD-EPI Collaboration", "KDIGO Guidelines"],
+    },
+    {
+      name: "BMI Calculator",
+      description: "Body Mass Index calculation and classification",
+      parameters: [
+        { name: "Weight (kg)", type: "number", required: true },
+        { name: "Height (cm)", type: "number", required: true },
+      ],
+      calculation: "Weight (kg) / Height (m)²",
+      interpretation: {
+        low_risk: "18.5-24.9: Normal weight",
+        moderate_risk: "25-29.9: Overweight",
+        high_risk: "≥30: Obese",
+      },
+      references: ["WHO Classification", "CDC Guidelines"],
+    },
+    {
+      name: "Wells Score for PE",
+      description: "Clinical prediction rule for pulmonary embolism",
+      parameters: [
+        { name: "Clinical signs of DVT", type: "boolean", required: true },
+        { name: "PE as likely as alternative diagnosis", type: "boolean", required: true },
+        { name: "Heart rate >100 bpm", type: "boolean", required: true },
+        { name: "Immobilization or surgery in past 4 weeks", type: "boolean", required: true },
+        { name: "Previous PE or DVT", type: "boolean", required: true },
+        { name: "Hemoptysis", type: "boolean", required: true },
+        { name: "Malignancy", type: "boolean", required: true },
+      ],
+      calculation: "Sum of positive findings (0-7)",
+      interpretation: {
+        low_risk: "0-4: Low probability",
+        moderate_risk: "5-6: Moderate probability",
+        high_risk: "≥7: High probability",
+      },
+      references: ["Wells PS et al.", "American College of Chest Physicians"],
+    },
   ];
 }
 
@@ -1372,7 +1465,7 @@ export function getDiagnosticCriteria(
         "Melancholic features",
       ],
     },
-    preeclampsia: {
+    "preeclampsia": {
       condition: "Preeclampsia",
       criteria_sets: [
         {
@@ -1416,6 +1509,238 @@ export function getDiagnosticCriteria(
         "Epigastric pain",
         "Decreased urine output",
         "Altered mental status",
+      ],
+    },
+    "diabetes mellitus type 2": {
+      condition: "Type 2 Diabetes Mellitus",
+      criteria_sets: [
+        {
+          name: "ADA Criteria",
+          source: "American Diabetes Association",
+          criteria: [
+            {
+              category: "Diagnostic Criteria (Any One)",
+              items: [
+                "Fasting plasma glucose ≥126 mg/dL (7.0 mmol/L)",
+                "2-hour plasma glucose ≥200 mg/dL (11.1 mmol/L) during OGTT",
+                "HbA1c ≥6.5% (48 mmol/mol)",
+                "Random plasma glucose ≥200 mg/dL (11.1 mmol/L) with symptoms",
+              ],
+              required_count: 1,
+            },
+            {
+              category: "Prediabetes Criteria",
+              items: [
+                "Fasting plasma glucose 100-125 mg/dL (5.6-6.9 mmol/L)",
+                "2-hour plasma glucose 140-199 mg/dL (7.8-11.0 mmol/L) during OGTT",
+                "HbA1c 5.7-6.4% (39-47 mmol/mol)",
+              ],
+              required_count: 0,
+            },
+          ],
+        },
+      ],
+      differential_diagnosis: [
+        "Type 1 Diabetes Mellitus",
+        "Gestational Diabetes",
+        "Monogenic Diabetes",
+        "Drug-induced Diabetes",
+        "Pancreatic Diabetes",
+      ],
+      red_flags: [
+        "Diabetic ketoacidosis",
+        "Hyperosmolar hyperglycemic state",
+        "Severe hypoglycemia",
+        "Diabetic foot ulcer",
+        "Vision changes",
+      ],
+    },
+    "hypertension": {
+      condition: "Hypertension",
+      criteria_sets: [
+        {
+          name: "AHA/ACC Criteria",
+          source: "American Heart Association/American College of Cardiology",
+          criteria: [
+            {
+              category: "Blood Pressure Categories",
+              items: [
+                "Normal: <120/<80 mmHg",
+                "Elevated: 120-129/<80 mmHg",
+                "Stage 1: 130-139/80-89 mmHg",
+                "Stage 2: ≥140/≥90 mmHg",
+                "Hypertensive Crisis: >180/>120 mmHg",
+              ],
+              required_count: 0,
+            },
+            {
+              category: "Diagnostic Requirements",
+              items: [
+                "Average of 2+ readings on 2+ occasions",
+                "Proper measurement technique",
+                "Home or ambulatory monitoring confirmation",
+              ],
+              required_count: 0,
+            },
+          ],
+        },
+      ],
+      differential_diagnosis: [
+        "White Coat Hypertension",
+        "Secondary Hypertension",
+        "Renal Artery Stenosis",
+        "Primary Aldosteronism",
+        "Pheochromocytoma",
+      ],
+      red_flags: [
+        "Hypertensive crisis",
+        "End-organ damage",
+        "Severe headache",
+        "Chest pain",
+        "Shortness of breath",
+        "Vision changes",
+      ],
+    },
+    "copd": {
+      condition: "Chronic Obstructive Pulmonary Disease",
+      criteria_sets: [
+        {
+          name: "GOLD Criteria",
+          source: "Global Initiative for Chronic Obstructive Lung Disease",
+          criteria: [
+            {
+              category: "Diagnostic Criteria",
+              items: [
+                "Post-bronchodilator FEV1/FVC <0.70",
+                "Presence of respiratory symptoms",
+                "Risk factors (smoking, occupational exposure)",
+                "Exclusion of other diagnoses",
+              ],
+              required_count: 2,
+            },
+            {
+              category: "Severity Classification",
+              items: [
+                "GOLD 1 (Mild): FEV1 ≥80% predicted",
+                "GOLD 2 (Moderate): FEV1 50-79% predicted",
+                "GOLD 3 (Severe): FEV1 30-49% predicted",
+                "GOLD 4 (Very Severe): FEV1 <30% predicted",
+              ],
+              required_count: 0,
+            },
+          ],
+        },
+      ],
+      differential_diagnosis: [
+        "Asthma",
+        "Bronchiectasis",
+        "Tuberculosis",
+        "Congestive Heart Failure",
+        "Interstitial Lung Disease",
+      ],
+      red_flags: [
+        "Acute exacerbation",
+        "Respiratory failure",
+        "Cyanosis",
+        "Severe dyspnea at rest",
+        "Altered mental status",
+      ],
+    },
+    "myocardial infarction": {
+      condition: "Myocardial Infarction",
+      criteria_sets: [
+        {
+          name: "Fourth Universal Definition",
+          source: "European Society of Cardiology/American College of Cardiology",
+          criteria: [
+            {
+              category: "Type 1 MI (Spontaneous)",
+              items: [
+                "Detection of rise/fall of cardiac troponin with at least one value >99th percentile",
+                "At least one of: symptoms of ischemia, new ECG changes, pathological Q waves, imaging evidence of new loss of viable myocardium",
+              ],
+              required_count: 2,
+            },
+            {
+              category: "Type 2 MI (Secondary)",
+              items: [
+                "Detection of rise/fall of cardiac troponin with at least one value >99th percentile",
+                "Imbalance between myocardial oxygen supply and demand",
+                "No evidence of acute coronary thrombosis",
+              ],
+              required_count: 2,
+            },
+          ],
+        },
+      ],
+      differential_diagnosis: [
+        "Unstable Angina",
+        "Pericarditis",
+        "Aortic Dissection",
+        "Pulmonary Embolism",
+        "Musculoskeletal Pain",
+      ],
+      red_flags: [
+        "Cardiogenic shock",
+        "Ventricular arrhythmias",
+        "Complete heart block",
+        "Mechanical complications",
+        "Recurrent chest pain",
+      ],
+    },
+    "pneumonia": {
+      condition: "Pneumonia",
+      criteria_sets: [
+        {
+          name: "Clinical Criteria",
+          source: "Infectious Diseases Society of America",
+          criteria: [
+            {
+              category: "Clinical Features",
+              items: [
+                "Fever or hypothermia",
+                "Cough with or without sputum production",
+                "Dyspnea or tachypnea",
+                "Chest pain",
+                "Altered mental status (elderly)",
+              ],
+              required_count: 2,
+            },
+            {
+              category: "Physical Examination",
+              items: [
+                "Crackles or rales on auscultation",
+                "Dullness to percussion",
+                "Increased tactile fremitus",
+                "Bronchial breath sounds",
+              ],
+              required_count: 1,
+            },
+            {
+              category: "Imaging",
+              items: [
+                "New or progressive infiltrate on chest X-ray",
+                "Consolidation on CT scan",
+                "Lung ultrasound findings",
+              ],
+              required_count: 1,
+            },
+          ],
+        },
+      ],
+      differential_diagnosis: [
+        "Bronchitis",
+        "Pulmonary Edema",
+        "Pulmonary Embolism",
+        "Lung Cancer",
+        "Tuberculosis",
+      ],
+      red_flags: [
+        "Severe sepsis",
+        "Respiratory failure",
+        "Pleural effusion",
+        "Lung abscess",
+        "Empyema",
       ],
     },
   };
