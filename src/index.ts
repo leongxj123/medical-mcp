@@ -764,7 +764,7 @@ server.tool(
   },
   async ({ symptoms }) => {
     try {
-      const differential = generateDifferentialDiagnosis(symptoms);
+      const differential = await generateDifferentialDiagnosis(symptoms);
 
       let result = `**Differential Diagnosis Generator**\n\n`;
       result += `**Presenting Symptoms:** ${symptoms.join(", ")}\n\n`;
@@ -831,7 +831,7 @@ server.tool(
   {},
   async () => {
     try {
-      const calculators = getRiskCalculators();
+      const calculators = await getRiskCalculators();
 
       let result = `**Available Medical Risk Calculators**\n\n`;
       result += `Found ${calculators.length} calculator(s)\n\n`;
@@ -882,7 +882,7 @@ server.tool(
   {},
   async () => {
     try {
-      const labValues = getLabValues();
+      const labValues = await getLabValues();
 
       let result = `**Laboratory Value Reference**\n\n`;
       result += `Available for ${labValues.length} test(s)\n\n`;
@@ -945,7 +945,7 @@ server.tool(
   },
   async ({ condition }) => {
     try {
-      const criteria = getDiagnosticCriteria(condition);
+      const criteria = await getDiagnosticCriteria(condition);
 
       if (!criteria) {
         return {

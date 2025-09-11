@@ -1045,705 +1045,521 @@ export async function checkDrugInteractions(
 }
 
 // Diagnostic Support Functions
-export function generateDifferentialDiagnosis(
+export async function generateDifferentialDiagnosis(
   symptoms: string[],
-): DifferentialDiagnosis {
-  // This is a simplified implementation - in practice, you'd use a comprehensive
-  // medical knowledge base or AI model trained on clinical data
+): Promise<DifferentialDiagnosis> {
+  try {
+    const symptomString = symptoms.join(" ").toLowerCase();
+    const searchTerms = [
+      `"${symptomString}" AND "differential diagnosis"`,
+      `"${symptomString}" AND "diagnosis" AND "symptoms"`,
+      `"${symptomString}" AND "clinical presentation"`,
+    ];
 
-  const symptomString = symptoms.join(" ").toLowerCase();
+    const results: DifferentialDiagnosis = {
+      symptoms: symptoms,
+      possible_diagnoses: [],
+      red_flags: [],
+      urgent_considerations: [],
+    };
 
-  // Common differential diagnoses based on symptoms
-  const commonDiagnoses = {
-    "chest pain": [
-      {
-        diagnosis: "Myocardial Infarction",
-        probability: "High" as const,
-        key_findings: ["ST elevation", "Troponin elevation"],
-        next_steps: ["ECG", "Cardiac enzymes", "Chest X-ray"],
-      },
-      {
-        diagnosis: "Pulmonary Embolism",
-        probability: "Moderate" as const,
-        key_findings: ["Dyspnea", "Tachycardia"],
-        next_steps: ["D-dimer", "CT-PA", "Wells score"],
-      },
-      {
-        diagnosis: "GERD",
-        probability: "Moderate" as const,
-        key_findings: ["Heartburn", "Regurgitation"],
-        next_steps: ["PPI trial", "Endoscopy"],
-      },
-    ],
-    "abdominal pain": [
-      {
-        diagnosis: "Appendicitis",
-        probability: "High" as const,
-        key_findings: ["RLQ pain", "Rebound tenderness"],
-        next_steps: ["CT abdomen", "Surgical consult"],
-      },
-      {
-        diagnosis: "Cholecystitis",
-        probability: "Moderate" as const,
-        key_findings: ["RUQ pain", "Murphy's sign"],
-        next_steps: ["Ultrasound", "LFTs"],
-      },
-      {
-        diagnosis: "Gastroenteritis",
-        probability: "Moderate" as const,
-        key_findings: ["Nausea", "Vomiting", "Diarrhea"],
-        next_steps: ["Stool studies", "Supportive care"],
-      },
-    ],
-    headache: [
-      {
-        diagnosis: "Tension Headache",
-        probability: "High" as const,
-        key_findings: ["Bilateral", "Pressure-like"],
-        next_steps: ["Analgesics", "Stress management"],
-      },
-      {
-        diagnosis: "Migraine",
-        probability: "Moderate" as const,
-        key_findings: ["Unilateral", "Photophobia"],
-        next_steps: ["Triptans", "Preventive therapy"],
-      },
-      {
-        diagnosis: "Subarachnoid Hemorrhage",
-        probability: "Low" as const,
-        key_findings: ["Thunderclap onset", "Neck stiffness"],
-        next_steps: ["CT head", "LP if CT negative"],
-      },
-    ],
-  };
+    for (const term of searchTerms) {
+      try {
+        const searchRes = await superagent
+          .get(`${PUBMED_API_BASE}/esearch.fcgi`)
+          .query({
+            db: "pubmed",
+            term: term,
+            retmode: "json",
+            retmax: 5,
+            sort: "relevance",
+          })
+          .set("User-Agent", USER_AGENT);
 
-  let possibleDiagnoses: {
-    diagnosis: string;
-    probability: "Low" | "Moderate" | "High";
-    key_findings: string[];
-    next_steps: string[];
-  }[] = [];
-  let redFlags: string[] = [];
-  let urgentConsiderations: string[] = [];
+        const idList = searchRes.body.esearchresult?.idlist || [];
+        if (idList.length > 0) {
+          const fetchRes = await superagent
+            .get(`${PUBMED_API_BASE}/efetch.fcgi`)
+            .query({
+              db: "pubmed",
+              id: idList.join(","),
+              retmode: "xml",
+            })
+            .set("User-Agent", USER_AGENT);
 
-  // Find matching diagnoses
-  for (const [symptomPattern, diagnoses] of Object.entries(commonDiagnoses)) {
-    if (symptomString.includes(symptomPattern)) {
-      possibleDiagnoses = diagnoses;
-      break;
+          const articles = parsePubMedXML(fetchRes.text);
+          
+          for (const article of articles) {
+            const text = `${article.title} ${article.abstract}`.toLowerCase();
+            
+            // Extract diagnoses using NLP patterns
+            const diagnosisPatterns = [
+              /differential diagnosis includes? ([^.]*)/gi,
+              /consider ([^.]*)/gi,
+              /rule out ([^.]*)/gi,
+            ];
+            
+            diagnosisPatterns.forEach(pattern => {
+              const matches = text.match(pattern);
+              if (matches) {
+                matches.forEach(match => {
+                  const diagnosis = match.replace(/differential diagnosis includes? |consider |rule out /gi, '').trim();
+                  if (diagnosis.length > 5 && diagnosis.length < 50) {
+                    results.possible_diagnoses.push({
+                      diagnosis: diagnosis,
+                      probability: "Moderate" as const,
+                      key_findings: ["See referenced literature"],
+                      next_steps: ["See referenced literature"]
+                    });
+                  }
+                });
+              }
+            });
+
+            // Extract red flags
+            const redFlagPatterns = [
+              /red\s*flag\s*:?\s*([^.]*)/gi,
+              /warning\s*sign\s*:?\s*([^.]*)/gi,
+              /urgent\s*:?\s*([^.]*)/gi,
+            ];
+            
+            redFlagPatterns.forEach(pattern => {
+              const matches = text.match(pattern);
+              if (matches) {
+                matches.forEach(match => {
+                  const flag = match.replace(/red\s*flag\s*:?\s*|warning\s*sign\s*:?\s*|urgent\s*:?\s*/gi, '').trim();
+                  if (flag.length > 5) {
+                    results.red_flags.push(flag);
+                  }
+                });
+              }
+            });
+          }
+        }
+      } catch (error) {
+        console.error(`Error searching differential diagnosis: ${error instanceof Error ? error.message : String(error)}`);
+        continue;
+      }
+    }
+
+    return results;
+  } catch (error) {
+    console.error("Error generating differential diagnosis:", error);
+    return {
+      symptoms: symptoms,
+      possible_diagnoses: [],
+      red_flags: [],
+      urgent_considerations: [],
+    };
+  }
+}
+
+export async function getRiskCalculators(condition?: string): Promise<RiskCalculator[]> {
+  try {
+    const searchTerm = condition ? `"${condition}" AND "risk calculator"` : "risk calculator scoring system";
+    
+    const searchRes = await superagent
+      .get(`${PUBMED_API_BASE}/esearch.fcgi`)
+      .query({
+        db: "pubmed",
+        term: searchTerm,
+        retmode: "json",
+        retmax: 10,
+        sort: "relevance",
+      })
+      .set("User-Agent", USER_AGENT);
+
+    const idList = searchRes.body.esearchresult?.idlist || [];
+    if (idList.length === 0) {
+      return [];
+    }
+
+    const fetchRes = await superagent
+      .get(`${PUBMED_API_BASE}/efetch.fcgi`)
+      .query({
+        db: "pubmed",
+        id: idList.join(","),
+        retmode: "xml",
+      })
+      .set("User-Agent", USER_AGENT);
+
+    const articles = parsePubMedXML(fetchRes.text);
+    const calculators: RiskCalculator[] = [];
+
+    for (const article of articles) {
+      const text = `${article.title} ${article.abstract}`.toLowerCase();
+      
+      if (text.includes("calculator") || text.includes("score") || text.includes("risk")) {
+        const calculatorName = extractCalculatorName(article.title, text);
+        const parameters = extractParameters(text);
+        const validation = extractValidation(text);
+        
+        if (calculatorName) {
+          calculators.push({
+            name: calculatorName,
+            description: `Risk calculator found in literature: ${article.title}`,
+            parameters: parameters.map(param => ({
+              name: param,
+              type: "number" as const,
+              required: true
+            })),
+            calculation: "See referenced literature for calculation details",
+            interpretation: {
+              low_risk: "See referenced literature for interpretation",
+              moderate_risk: "See referenced literature for interpretation", 
+              high_risk: "See referenced literature for interpretation"
+            },
+            references: [article.journal, article.title]
+          });
+        }
+      }
+    }
+
+    return calculators;
+  } catch (error) {
+    console.error("Error getting risk calculators:", error);
+    return [];
+  }
+}
+
+// Helper functions for extracting calculator information
+function extractCalculatorName(title: string, text: string): string | null {
+  const patterns = [
+    /([A-Z][a-z]+ [A-Z][a-z]+ [Ss]core)/g,
+    /([A-Z][a-z]+ [Rr]isk [Cc]alculator)/g,
+    /([A-Z][a-z]+ [Ss]coring [Ss]ystem)/g,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = title.match(pattern) || text.match(pattern);
+    if (match) {
+      return match[1];
     }
   }
-
-  // Add red flags based on symptoms
-  if (symptomString.includes("chest pain")) {
-    redFlags.push(
-      "Sudden onset",
-      "Radiation to arm/jaw",
-      "Diaphoresis",
-      "Nausea",
-    );
-    urgentConsiderations.push(
-      "Rule out MI",
-      "Consider PE",
-      "Assess vital signs",
-    );
-  }
-  if (symptomString.includes("abdominal pain")) {
-    redFlags.push("Severe pain", "Peritoneal signs", "Fever", "Vomiting");
-    urgentConsiderations.push(
-      "Rule out surgical emergency",
-      "Assess for peritonitis",
-    );
-  }
-  if (symptomString.includes("headache")) {
-    redFlags.push(
-      "Sudden onset",
-      "Worst headache of life",
-      "Fever",
-      "Neck stiffness",
-    );
-    urgentConsiderations.push("Rule out SAH", "Assess for meningitis");
-  }
-
-  return {
-    symptoms,
-    possible_diagnoses: possibleDiagnoses,
-    red_flags: redFlags,
-    urgent_considerations: urgentConsiderations,
-  };
+  
+  return null;
 }
 
-export function getRiskCalculators(): RiskCalculator[] {
-  return [
-    {
-      name: "APGAR Score",
-      description:
-        "Assessment of newborn's physical condition at 1 and 5 minutes after birth",
-      parameters: [
-        {
-          name: "Appearance (Color)",
-          type: "select",
-          options: [
-            "0 - Blue/pale",
-            "1 - Body pink, extremities blue",
-            "2 - Completely pink",
-          ],
-          required: true,
-        },
-        {
-          name: "Pulse (Heart Rate)",
-          type: "select",
-          options: ["0 - Absent", "1 - <100 bpm", "2 - >100 bpm"],
-          required: true,
-        },
-        {
-          name: "Grimace (Reflex Irritability)",
-          type: "select",
-          options: [
-            "0 - No response",
-            "1 - Grimace",
-            "2 - Cry or active withdrawal",
-          ],
-          required: true,
-        },
-        {
-          name: "Activity (Muscle Tone)",
-          type: "select",
-          options: ["0 - Flaccid", "1 - Some flexion", "2 - Active motion"],
-          required: true,
-        },
-        {
-          name: "Respiration (Breathing)",
-          type: "select",
-          options: ["0 - Absent", "1 - Slow/irregular", "2 - Good, crying"],
-          required: true,
-        },
-      ],
-      calculation: "Sum of all parameters (0-10)",
-      interpretation: {
-        low_risk: "7-10: Normal, routine care",
-        moderate_risk: "4-6: Some assistance needed, may need stimulation",
-        high_risk: "0-3: Immediate resuscitation required",
-      },
-      references: [
-        "American Academy of Pediatrics",
-        "Neonatal Resuscitation Program",
-      ],
-    },
-    {
-      name: "Bishop Score",
-      description: "Assessment of cervical readiness for labor induction",
-      parameters: [
-        { name: "Dilation (cm)", type: "number", required: true },
-        { name: "Effacement (%)", type: "number", required: true },
-        {
-          name: "Station",
-          type: "select",
-          options: ["-3", "-2", "-1", "0", "+1", "+2", "+3"],
-          required: true,
-        },
-        {
-          name: "Consistency",
-          type: "select",
-          options: ["Firm", "Medium", "Soft"],
-          required: true,
-        },
-        {
-          name: "Position",
-          type: "select",
-          options: ["Posterior", "Mid", "Anterior"],
-          required: true,
-        },
-      ],
-      calculation: "Sum of all parameters (0-13)",
-      interpretation: {
-        low_risk: "0-4: Unfavorable for induction",
-        moderate_risk: "5-9: Moderate success rate",
-        high_risk: "10-13: Favorable for induction",
-      },
-      references: ["ACOG Practice Bulletin", "Obstetric Guidelines"],
-    },
-    {
-      name: "ASCVD Risk Calculator",
-      description: "10-year atherosclerotic cardiovascular disease risk assessment",
-      parameters: [
-        { name: "Age (years)", type: "number", required: true },
-        { name: "Gender", type: "select", options: ["Male", "Female"], required: true },
-        { name: "Race", type: "select", options: ["White", "African American", "Other"], required: true },
-        { name: "Total Cholesterol (mg/dL)", type: "number", required: true },
-        { name: "HDL Cholesterol (mg/dL)", type: "number", required: true },
-        { name: "Systolic BP (mmHg)", type: "number", required: true },
-        { name: "Diabetes", type: "boolean", required: true },
-        { name: "Smoker", type: "boolean", required: true },
-        { name: "On BP medication", type: "boolean", required: true },
-      ],
-      calculation: "Complex formula based on Pooled Cohort Equations",
-      interpretation: {
-        low_risk: "<5%: Low risk, lifestyle counseling",
-        moderate_risk: "5-7.4%: Borderline risk, consider statin",
-        high_risk: "≥7.5%: High risk, statin therapy recommended",
-      },
-      references: ["2018 AHA/ACC/AACVPR/AAPA/ABC/ACPM/ADA/AGS/APhA/ASPC/NLA/PCNA Guideline"],
-    },
-    {
-      name: "eGFR Calculator",
-      description: "Estimated glomerular filtration rate using CKD-EPI equation",
-      parameters: [
-        { name: "Age (years)", type: "number", required: true },
-        { name: "Gender", type: "select", options: ["Male", "Female"], required: true },
-        { name: "Race", type: "select", options: ["Black", "Non-Black"], required: true },
-        { name: "Serum Creatinine (mg/dL)", type: "number", required: true },
-      ],
-      calculation: "CKD-EPI equation: 141 × min(Scr/κ, 1)^α × max(Scr/κ, 1)^-1.209 × 0.993^Age × 1.018 [if female] × 1.159 [if Black]",
-      interpretation: {
-        low_risk: "≥90: Normal or high",
-        moderate_risk: "60-89: Mildly decreased",
-        high_risk: "<60: Moderately to severely decreased",
-      },
-      references: ["CKD-EPI Collaboration", "KDIGO Guidelines"],
-    },
-    {
-      name: "BMI Calculator",
-      description: "Body Mass Index calculation and classification",
-      parameters: [
-        { name: "Weight (kg)", type: "number", required: true },
-        { name: "Height (cm)", type: "number", required: true },
-      ],
-      calculation: "Weight (kg) / Height (m)²",
-      interpretation: {
-        low_risk: "18.5-24.9: Normal weight",
-        moderate_risk: "25-29.9: Overweight",
-        high_risk: "≥30: Obese",
-      },
-      references: ["WHO Classification", "CDC Guidelines"],
-    },
-    {
-      name: "Wells Score for PE",
-      description: "Clinical prediction rule for pulmonary embolism",
-      parameters: [
-        { name: "Clinical signs of DVT", type: "boolean", required: true },
-        { name: "PE as likely as alternative diagnosis", type: "boolean", required: true },
-        { name: "Heart rate >100 bpm", type: "boolean", required: true },
-        { name: "Immobilization or surgery in past 4 weeks", type: "boolean", required: true },
-        { name: "Previous PE or DVT", type: "boolean", required: true },
-        { name: "Hemoptysis", type: "boolean", required: true },
-        { name: "Malignancy", type: "boolean", required: true },
-      ],
-      calculation: "Sum of positive findings (0-7)",
-      interpretation: {
-        low_risk: "0-4: Low probability",
-        moderate_risk: "5-6: Moderate probability",
-        high_risk: "≥7: High probability",
-      },
-      references: ["Wells PS et al.", "American College of Chest Physicians"],
-    },
+function extractParameters(text: string): string[] {
+  const parameters: string[] = [];
+  const paramPatterns = [
+    /age\s*:?\s*(\d+)/gi,
+    /weight\s*:?\s*(\d+)/gi,
+    /height\s*:?\s*(\d+)/gi,
+    /blood\s*pressure\s*:?\s*(\d+)/gi,
+    /heart\s*rate\s*:?\s*(\d+)/gi,
   ];
+  
+  paramPatterns.forEach(pattern => {
+    const matches = text.match(pattern);
+    if (matches) {
+      parameters.push(matches[0]);
+    }
+  });
+  
+  return parameters;
 }
 
-export function getLabValues(): LabValue[] {
-  return [
-    {
-      test_name: "Hemoglobin",
-      normal_ranges: [
-        {
-          age_group: "Adult",
-          male_range: "13.8-17.2",
-          female_range: "12.1-15.1",
-          units: "g/dL",
-        },
-        {
-          age_group: "Pregnancy",
-          pregnancy_status: "1st trimester",
-          male_range: "11.0-13.0",
-          female_range: "11.0-13.0",
-          units: "g/dL",
-        },
-        {
-          age_group: "Pregnancy",
-          pregnancy_status: "2nd trimester",
-          male_range: "10.5-14.0",
-          female_range: "10.5-14.0",
-          units: "g/dL",
-        },
-        {
-          age_group: "Pregnancy",
-          pregnancy_status: "3rd trimester",
-          male_range: "11.0-15.0",
-          female_range: "11.0-15.0",
-          units: "g/dL",
-        },
-        {
-          age_group: "Newborn",
-          male_range: "14.0-24.0",
-          female_range: "14.0-24.0",
-          units: "g/dL",
-        },
-      ],
-      critical_values: { low: "<7.0", high: ">20.0" },
-      interpretation: "Measures oxygen-carrying capacity of blood",
-      clinical_significance:
-        "Low values indicate anemia; high values may indicate polycythemia",
-    },
-    {
-      test_name: "White Blood Cell Count",
-      normal_ranges: [
-        {
-          age_group: "Adult",
-          male_range: "4.5-11.0",
-          female_range: "4.5-11.0",
-          units: "×10³/μL",
-        },
-        {
-          age_group: "Pregnancy",
-          pregnancy_status: "All trimesters",
-          male_range: "5.7-13.6",
-          female_range: "5.7-13.6",
-          units: "×10³/μL",
-        },
-        {
-          age_group: "Newborn",
-          male_range: "9.0-30.0",
-          female_range: "9.0-30.0",
-          units: "×10³/μL",
-        },
-      ],
-      critical_values: { low: "<2.0", high: ">30.0" },
-      interpretation: "Measures immune system cell count",
-      clinical_significance:
-        "Low values indicate immunosuppression; high values suggest infection or inflammation",
-    },
+function extractValidation(text: string): string {
+  if (text.includes("validated") || text.includes("validation")) {
+    return "Validated";
+  } else if (text.includes("prospective") || text.includes("cohort")) {
+    return "Prospective Study";
+  } else {
+    return "Literature Review";
+  }
+}
+
+export async function getLabValues(testName?: string): Promise<LabValue[]> {
+  try {
+    const searchTerm = testName ? `"${testName}" AND "normal range"` : "laboratory normal range reference values";
+    
+    const searchRes = await superagent
+      .get(`${PUBMED_API_BASE}/esearch.fcgi`)
+      .query({
+        db: "pubmed",
+        term: searchTerm,
+        retmode: "json",
+        retmax: 10,
+        sort: "relevance",
+      })
+      .set("User-Agent", USER_AGENT);
+
+    const idList = searchRes.body.esearchresult?.idlist || [];
+    if (idList.length === 0) {
+      return [];
+    }
+
+    const fetchRes = await superagent
+      .get(`${PUBMED_API_BASE}/efetch.fcgi`)
+      .query({
+        db: "pubmed",
+        id: idList.join(","),
+        retmode: "xml",
+      })
+      .set("User-Agent", USER_AGENT);
+
+    const articles = parsePubMedXML(fetchRes.text);
+    const labValues: LabValue[] = [];
+
+    for (const article of articles) {
+      const text = `${article.title} ${article.abstract}`.toLowerCase();
+      
+      if (text.includes("normal range") || text.includes("reference range")) {
+        const ranges = extractLabRanges(text, testName || "Unknown Test");
+        const criticalValues = extractCriticalValues(text);
+        const ageGroups = extractAgeGroups(text);
+        
+        if (ranges.length > 0) {
+          labValues.push({
+            test_name: testName || "Laboratory Test",
+            normal_ranges: ranges,
+            critical_values: criticalValues,
+            interpretation: "See referenced literature for interpretation",
+            clinical_significance: "See referenced literature for clinical significance"
+          });
+        }
+      }
+    }
+
+    return labValues;
+  } catch (error) {
+    console.error("Error getting lab values:", error);
+    return [];
+  }
+}
+
+// Helper functions for extracting lab information
+function extractLabRanges(text: string, testName: string): any[] {
+  const ranges: any[] = [];
+  const rangePatterns = [
+    /(\d+\.?\d*)\s*-\s*(\d+\.?\d*)\s*([a-zA-Z\/%]+)/gi,
+    /(\d+\.?\d*)\s*to\s*(\d+\.?\d*)\s*([a-zA-Z\/%]+)/gi,
   ];
+  
+  rangePatterns.forEach(pattern => {
+    const matches = text.match(pattern);
+    if (matches) {
+      matches.forEach(match => {
+        const parts = match.match(/(\d+\.?\d*)\s*[-to]\s*(\d+\.?\d*)\s*([a-zA-Z\/%]+)/i);
+        if (parts) {
+          ranges.push({
+            age_group: "Adult",
+            male_range: `${parts[1]}-${parts[2]}`,
+            female_range: `${parts[1]}-${parts[2]}`,
+            units: parts[3]
+          });
+        }
+      });
+    }
+  });
+  
+  return ranges;
 }
 
-export function getDiagnosticCriteria(
+function extractCriticalValues(text: string): any {
+  const critical: { low: string | null, high: string | null } = { low: null, high: null };
+  const criticalPatterns = [
+    /critical\s*value\s*[<>]\s*(\d+\.?\d*)/gi,
+    /alert\s*value\s*[<>]\s*(\d+\.?\d*)/gi,
+  ];
+  
+  criticalPatterns.forEach(pattern => {
+    const matches = text.match(pattern);
+    if (matches) {
+      matches.forEach(match => {
+        const valueMatch = match.match(/(\d+\.?\d*)/);
+        if (valueMatch) {
+          if (match.includes('<')) {
+            critical.low = valueMatch[1];
+          } else if (match.includes('>')) {
+            critical.high = valueMatch[1];
+          }
+        }
+      });
+    }
+  });
+  
+  return critical;
+}
+
+function extractAgeGroups(text: string): string[] {
+  const ageGroups: string[] = [];
+  const agePatterns = [
+    /(\d+)\s*-\s*(\d+)\s*years/gi,
+    /(\d+)\s*to\s*(\d+)\s*years/gi,
+    /adult/gi,
+    /pediatric/gi,
+    /newborn/gi,
+  ];
+  
+  agePatterns.forEach(pattern => {
+    const matches = text.match(pattern);
+    if (matches) {
+      ageGroups.push(...matches);
+    }
+  });
+  
+  return ageGroups;
+}
+
+export async function getDiagnosticCriteria(
   condition: string,
-): DiagnosticCriteria | null {
-  const criteriaDatabase: { [key: string]: DiagnosticCriteria } = {
-    "major depressive disorder": {
-      condition: "Major Depressive Disorder",
-      criteria_sets: [
-        {
-          name: "DSM-5 Criteria",
-          source:
-            "Diagnostic and Statistical Manual of Mental Disorders, 5th Edition",
-          criteria: [
-            {
-              category: "Core Symptoms",
-              items: [
-                "Depressed mood most of the day, nearly every day",
-                "Markedly diminished interest or pleasure in activities",
-              ],
-              required_count: 1,
-            },
-            {
-              category: "Additional Symptoms",
-              items: [
-                "Significant weight loss or gain",
-                "Insomnia or hypersomnia",
-                "Psychomotor agitation or retardation",
-                "Fatigue or loss of energy",
-                "Feelings of worthlessness or guilt",
-                "Diminished ability to think or concentrate",
-                "Recurrent thoughts of death or suicide",
-              ],
-              required_count: 4,
-            },
-          ],
-        },
-      ],
-      differential_diagnosis: [
-        "Bipolar Disorder",
-        "Persistent Depressive Disorder",
-        "Adjustment Disorder",
-        "Substance-Induced Mood Disorder",
-        "Medical Condition-Related Depression",
-      ],
-      red_flags: [
-        "Suicidal ideation",
-        "Psychotic features",
-        "Catatonic features",
-        "Melancholic features",
-      ],
-    },
-    "preeclampsia": {
-      condition: "Preeclampsia",
-      criteria_sets: [
-        {
-          name: "ACOG Criteria",
-          source: "American College of Obstetricians and Gynecologists",
-          criteria: [
-            {
-              category: "Required",
-              items: [
-                "Systolic BP ≥140 mmHg or diastolic BP ≥90 mmHg on two occasions at least 4 hours apart",
-                "Proteinuria ≥300 mg/24 hours or protein/creatinine ratio ≥0.3",
-              ],
-              required_count: 2,
-            },
-            {
-              category: "Severe Features",
-              items: [
-                "Systolic BP ≥160 mmHg or diastolic BP ≥110 mmHg",
-                "Thrombocytopenia (<100,000/μL)",
-                "Impaired liver function (elevated transaminases)",
-                "Progressive renal insufficiency",
-                "Pulmonary edema",
-                "New-onset headache or visual disturbances",
-              ],
-              required_count: 0,
-            },
-          ],
-        },
-      ],
-      differential_diagnosis: [
-        "Chronic Hypertension",
-        "Gestational Hypertension",
-        "HELLP Syndrome",
-        "Eclampsia",
-        "Other causes of proteinuria",
-      ],
-      red_flags: [
-        "Severe hypertension",
-        "Severe headache",
-        "Visual changes",
-        "Epigastric pain",
-        "Decreased urine output",
-        "Altered mental status",
-      ],
-    },
-    "diabetes mellitus type 2": {
-      condition: "Type 2 Diabetes Mellitus",
-      criteria_sets: [
-        {
-          name: "ADA Criteria",
-          source: "American Diabetes Association",
-          criteria: [
-            {
-              category: "Diagnostic Criteria (Any One)",
-              items: [
-                "Fasting plasma glucose ≥126 mg/dL (7.0 mmol/L)",
-                "2-hour plasma glucose ≥200 mg/dL (11.1 mmol/L) during OGTT",
-                "HbA1c ≥6.5% (48 mmol/mol)",
-                "Random plasma glucose ≥200 mg/dL (11.1 mmol/L) with symptoms",
-              ],
-              required_count: 1,
-            },
-            {
-              category: "Prediabetes Criteria",
-              items: [
-                "Fasting plasma glucose 100-125 mg/dL (5.6-6.9 mmol/L)",
-                "2-hour plasma glucose 140-199 mg/dL (7.8-11.0 mmol/L) during OGTT",
-                "HbA1c 5.7-6.4% (39-47 mmol/mol)",
-              ],
-              required_count: 0,
-            },
-          ],
-        },
-      ],
-      differential_diagnosis: [
-        "Type 1 Diabetes Mellitus",
-        "Gestational Diabetes",
-        "Monogenic Diabetes",
-        "Drug-induced Diabetes",
-        "Pancreatic Diabetes",
-      ],
-      red_flags: [
-        "Diabetic ketoacidosis",
-        "Hyperosmolar hyperglycemic state",
-        "Severe hypoglycemia",
-        "Diabetic foot ulcer",
-        "Vision changes",
-      ],
-    },
-    "hypertension": {
-      condition: "Hypertension",
-      criteria_sets: [
-        {
-          name: "AHA/ACC Criteria",
-          source: "American Heart Association/American College of Cardiology",
-          criteria: [
-            {
-              category: "Blood Pressure Categories",
-              items: [
-                "Normal: <120/<80 mmHg",
-                "Elevated: 120-129/<80 mmHg",
-                "Stage 1: 130-139/80-89 mmHg",
-                "Stage 2: ≥140/≥90 mmHg",
-                "Hypertensive Crisis: >180/>120 mmHg",
-              ],
-              required_count: 0,
-            },
-            {
-              category: "Diagnostic Requirements",
-              items: [
-                "Average of 2+ readings on 2+ occasions",
-                "Proper measurement technique",
-                "Home or ambulatory monitoring confirmation",
-              ],
-              required_count: 0,
-            },
-          ],
-        },
-      ],
-      differential_diagnosis: [
-        "White Coat Hypertension",
-        "Secondary Hypertension",
-        "Renal Artery Stenosis",
-        "Primary Aldosteronism",
-        "Pheochromocytoma",
-      ],
-      red_flags: [
-        "Hypertensive crisis",
-        "End-organ damage",
-        "Severe headache",
-        "Chest pain",
-        "Shortness of breath",
-        "Vision changes",
-      ],
-    },
-    "copd": {
-      condition: "Chronic Obstructive Pulmonary Disease",
-      criteria_sets: [
-        {
-          name: "GOLD Criteria",
-          source: "Global Initiative for Chronic Obstructive Lung Disease",
-          criteria: [
-            {
-              category: "Diagnostic Criteria",
-              items: [
-                "Post-bronchodilator FEV1/FVC <0.70",
-                "Presence of respiratory symptoms",
-                "Risk factors (smoking, occupational exposure)",
-                "Exclusion of other diagnoses",
-              ],
-              required_count: 2,
-            },
-            {
-              category: "Severity Classification",
-              items: [
-                "GOLD 1 (Mild): FEV1 ≥80% predicted",
-                "GOLD 2 (Moderate): FEV1 50-79% predicted",
-                "GOLD 3 (Severe): FEV1 30-49% predicted",
-                "GOLD 4 (Very Severe): FEV1 <30% predicted",
-              ],
-              required_count: 0,
-            },
-          ],
-        },
-      ],
-      differential_diagnosis: [
-        "Asthma",
-        "Bronchiectasis",
-        "Tuberculosis",
-        "Congestive Heart Failure",
-        "Interstitial Lung Disease",
-      ],
-      red_flags: [
-        "Acute exacerbation",
-        "Respiratory failure",
-        "Cyanosis",
-        "Severe dyspnea at rest",
-        "Altered mental status",
-      ],
-    },
-    "myocardial infarction": {
-      condition: "Myocardial Infarction",
-      criteria_sets: [
-        {
-          name: "Fourth Universal Definition",
-          source: "European Society of Cardiology/American College of Cardiology",
-          criteria: [
-            {
-              category: "Type 1 MI (Spontaneous)",
-              items: [
-                "Detection of rise/fall of cardiac troponin with at least one value >99th percentile",
-                "At least one of: symptoms of ischemia, new ECG changes, pathological Q waves, imaging evidence of new loss of viable myocardium",
-              ],
-              required_count: 2,
-            },
-            {
-              category: "Type 2 MI (Secondary)",
-              items: [
-                "Detection of rise/fall of cardiac troponin with at least one value >99th percentile",
-                "Imbalance between myocardial oxygen supply and demand",
-                "No evidence of acute coronary thrombosis",
-              ],
-              required_count: 2,
-            },
-          ],
-        },
-      ],
-      differential_diagnosis: [
-        "Unstable Angina",
-        "Pericarditis",
-        "Aortic Dissection",
-        "Pulmonary Embolism",
-        "Musculoskeletal Pain",
-      ],
-      red_flags: [
-        "Cardiogenic shock",
-        "Ventricular arrhythmias",
-        "Complete heart block",
-        "Mechanical complications",
-        "Recurrent chest pain",
-      ],
-    },
-    "pneumonia": {
-      condition: "Pneumonia",
-      criteria_sets: [
-        {
-          name: "Clinical Criteria",
-          source: "Infectious Diseases Society of America",
-          criteria: [
-            {
-              category: "Clinical Features",
-              items: [
-                "Fever or hypothermia",
-                "Cough with or without sputum production",
-                "Dyspnea or tachypnea",
-                "Chest pain",
-                "Altered mental status (elderly)",
-              ],
-              required_count: 2,
-            },
-            {
-              category: "Physical Examination",
-              items: [
-                "Crackles or rales on auscultation",
-                "Dullness to percussion",
-                "Increased tactile fremitus",
-                "Bronchial breath sounds",
-              ],
-              required_count: 1,
-            },
-            {
-              category: "Imaging",
-              items: [
-                "New or progressive infiltrate on chest X-ray",
-                "Consolidation on CT scan",
-                "Lung ultrasound findings",
-              ],
-              required_count: 1,
-            },
-          ],
-        },
-      ],
-      differential_diagnosis: [
-        "Bronchitis",
-        "Pulmonary Edema",
-        "Pulmonary Embolism",
-        "Lung Cancer",
-        "Tuberculosis",
-      ],
-      red_flags: [
-        "Severe sepsis",
-        "Respiratory failure",
-        "Pleural effusion",
-        "Lung abscess",
-        "Empyema",
-      ],
-    },
-  };
+): Promise<DiagnosticCriteria | null> {
+  try {
+    // Search for diagnostic criteria in medical literature
+    const terms = [
+      `"${condition}" AND "diagnostic criteria"`,
+      `"${condition}" AND "DSM"`,
+      `"${condition}" AND "ICD"`,
+      `"${condition}" AND "diagnosis" AND "criteria"`,
+    ];
 
-  return criteriaDatabase[condition.toLowerCase()] || null;
+    const criteria: DiagnosticCriteria = {
+      condition: condition,
+      criteria_sets: [],
+      differential_diagnosis: [],
+      red_flags: [],
+    };
+
+    for (const term of terms) {
+      try {
+        const searchRes = await superagent
+          .get(`${PUBMED_API_BASE}/esearch.fcgi`)
+          .query({
+            db: "pubmed",
+            term: term,
+            retmode: "json",
+            retmax: 5,
+            sort: "relevance",
+          })
+          .set("User-Agent", USER_AGENT);
+
+        const idList = searchRes.body.esearchresult?.idlist || [];
+        if (idList.length > 0) {
+          const fetchRes = await superagent
+            .get(`${PUBMED_API_BASE}/efetch.fcgi`)
+            .query({
+              db: "pubmed",
+              id: idList.join(","),
+              retmode: "xml",
+            })
+            .set("User-Agent", USER_AGENT);
+
+          const articles = parsePubMedXML(fetchRes.text);
+          
+          for (const article of articles) {
+            const text = `${article.title} ${article.abstract}`.toLowerCase();
+            
+            if (text.includes("criteria") || text.includes("diagnosis")) {
+              // Extract criteria sets using NLP patterns
+              const criteriaSets = extractCriteriaSets(text, condition);
+              const redFlags = extractRedFlags(text);
+              const differential = extractDifferentialDiagnosis(text);
+              
+              if (criteriaSets.length > 0) {
+                criteria.criteria_sets.push(...criteriaSets);
+              }
+              if (redFlags.length > 0) {
+                criteria.red_flags.push(...redFlags);
+              }
+              if (differential.length > 0) {
+                criteria.differential_diagnosis.push(...differential);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Error searching diagnostic criteria for ${condition}:`, error);
+        continue;
+      }
+    }
+
+    // Return null if no criteria found
+    if (criteria.criteria_sets.length === 0) {
+      return null;
+    }
+
+    return criteria;
+  } catch (error) {
+    console.error("Error getting diagnostic criteria:", error);
+    return null;
+  }
+}
+
+// Helper functions for extracting criteria from text
+function extractCriteriaSets(text: string, condition: string): any[] {
+  const criteriaSets: any[] = [];
+  const criteriaPatterns = [
+    /criteria\s*:?\s*([^.]*)/gi,
+    /diagnostic\s*criteria\s*:?\s*([^.]*)/gi,
+  ];
+  
+  criteriaPatterns.forEach(pattern => {
+    const matches = text.match(pattern);
+    if (matches) {
+      matches.forEach(match => {
+        const criteria = match.replace(/criteria\s*:?\s*|diagnostic\s*criteria\s*:?\s*/gi, '').trim();
+        if (criteria.length > 10) {
+          criteriaSets.push({
+            name: `${condition} Criteria`,
+            source: "Literature Review",
+            criteria: [{
+              category: "Diagnostic Criteria",
+              items: [criteria],
+              required_count: 1
+            }]
+          });
+        }
+      });
+    }
+  });
+  
+  return criteriaSets;
+}
+
+function extractRedFlags(text: string): string[] {
+  const redFlags: string[] = [];
+  const redFlagPatterns = [
+    /red\s*flag\s*:?\s*([^.]*)/gi,
+    /warning\s*sign\s*:?\s*([^.]*)/gi,
+    /urgent\s*:?\s*([^.]*)/gi,
+  ];
+  
+  redFlagPatterns.forEach(pattern => {
+    const matches = text.match(pattern);
+    if (matches) {
+      matches.forEach(match => {
+        const flag = match.replace(/red\s*flag\s*:?\s*|warning\s*sign\s*:?\s*|urgent\s*:?\s*/gi, '').trim();
+        if (flag.length > 5) {
+          redFlags.push(flag);
+        }
+      });
+    }
+  });
+  
+  return redFlags;
+}
+
+function extractDifferentialDiagnosis(text: string): string[] {
+  const differential: string[] = [];
+  const diffPatterns = [
+    /differential\s*diagnosis\s*:?\s*([^.]*)/gi,
+    /consider\s*:?\s*([^.]*)/gi,
+    /rule\s*out\s*:?\s*([^.]*)/gi,
+  ];
+  
+  diffPatterns.forEach(pattern => {
+    const matches = text.match(pattern);
+    if (matches) {
+      matches.forEach(match => {
+        const diagnosis = match.replace(/differential\s*diagnosis\s*:?\s*|consider\s*:?\s*|rule\s*out\s*:?\s*/gi, '').trim();
+        if (diagnosis.length > 5) {
+          differential.push(diagnosis);
+        }
+      });
+    }
+  });
+  
+  return differential;
 }
