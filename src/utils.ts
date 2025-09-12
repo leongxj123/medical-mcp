@@ -966,6 +966,18 @@ export async function checkDrugInteractions(
       ["glipizide", "metformin"],
       ["metformin", "sitagliptin"],
       ["sitagliptin", "metformin"],
+      ["simvastatin", "amlodipine"],
+      ["amlodipine", "simvastatin"],
+      ["atorvastatin", "amlodipine"],
+      ["amlodipine", "atorvastatin"],
+      ["lisinopril", "amlodipine"],
+      ["amlodipine", "lisinopril"],
+      ["metoprolol", "amlodipine"],
+      ["amlodipine", "metoprolol"],
+      ["warfarin", "aspirin"],
+      ["aspirin", "warfarin"],
+      ["clopidogrel", "aspirin"],
+      ["aspirin", "clopidogrel"],
     ];
 
     const drug1Lower = drug1.toLowerCase();
@@ -977,14 +989,37 @@ export async function checkDrugInteractions(
         (drug1Lower.includes(safe1) && drug2Lower.includes(safe2)) ||
         (drug1Lower.includes(safe2) && drug2Lower.includes(safe1))
       ) {
+        // Provide specific guidance based on the combination
+        let description = `Commonly used combination`;
+        let clinicalEffects = "Generally safe when used together";
+        let management = "Monitor as clinically indicated";
+
+        if (safe1.includes("metformin") || safe2.includes("metformin")) {
+          description = `Commonly used combination for diabetes management`;
+          clinicalEffects = "Generally safe when used together";
+          management = "Monitor blood glucose levels regularly";
+        } else if (safe1.includes("simvastatin") || safe2.includes("simvastatin")) {
+          description = `Commonly used combination for cardiovascular risk management`;
+          clinicalEffects = "Generally safe with appropriate dose adjustments";
+          management = "Limit simvastatin to ≤20mg daily, monitor for myopathy";
+        } else if (safe1.includes("amlodipine") || safe2.includes("amlodipine")) {
+          description = `Commonly used combination for hypertension management`;
+          clinicalEffects = "Generally safe when used together";
+          management = "Monitor blood pressure and adjust doses as needed";
+        } else if (safe1.includes("warfarin") || safe2.includes("warfarin")) {
+          description = `Commonly used combination for cardiovascular protection`;
+          clinicalEffects = "Generally safe with appropriate monitoring";
+          management = "Monitor INR closely, consider bleeding risk";
+        }
+
         return [
           {
             drug1,
             drug2,
             severity: "Minor" as const,
-            description: `Commonly used combination for diabetes management`,
-            clinical_effects: "Generally safe when used together",
-            management: "Monitor blood glucose levels regularly",
+            description: description,
+            clinical_effects: clinicalEffects,
+            management: management,
             evidence_level: "Clinical Practice",
           },
         ];
@@ -1031,33 +1066,58 @@ export async function checkDrugInteractions(
 
             // Only process if it's actually about drug interactions
             if (
-              (abstract.includes("interaction") || abstract.includes("contraindication")) &&
+              (abstract.includes("interaction") ||
+                abstract.includes("contraindication")) &&
               !abstract.includes("no interaction") &&
-              !abstract.includes("safe combination")
+              !abstract.includes("safe combination") &&
+              !abstract.includes("no contraindication") &&
+              !abstract.includes("can be used together")
             ) {
-              let severity: "Minor" | "Moderate" | "Major" | "Contraindicated" = "Moderate";
+              let severity: "Minor" | "Moderate" | "Major" | "Contraindicated" =
+                "Moderate";
 
               // More careful severity assessment
-              if (abstract.includes("contraindicated") || abstract.includes("avoid")) {
+              if (
+                abstract.includes("contraindicated") ||
+                abstract.includes("avoid")
+              ) {
                 severity = "Contraindicated";
-              } else if (abstract.includes("severe") || abstract.includes("major")) {
+              } else if (
+                abstract.includes("severe") ||
+                abstract.includes("major")
+              ) {
                 severity = "Major";
-              } else if (abstract.includes("minor") || abstract.includes("mild")) {
+              } else if (
+                abstract.includes("minor") ||
+                abstract.includes("mild")
+              ) {
                 severity = "Minor";
               }
 
               // Avoid duplicates
               const existingInteraction = interactions.find(
-                (i) => i.drug1 === drug1 && i.drug2 === drug2
+                (i) => i.drug1 === drug1 && i.drug2 === drug2,
               );
               if (!existingInteraction) {
+                // Extract specific clinical effects from the abstract
+                const clinicalEffects = extractClinicalEffects(
+                  abstract,
+                  drug1,
+                  drug2,
+                );
+                const management = extractManagementAdvice(abstract);
+
                 interactions.push({
                   drug1,
                   drug2,
                   severity,
                   description: `Interaction between ${drug1} and ${drug2} - see referenced literature`,
-                  clinical_effects: "See referenced literature for clinical effects",
-                  management: "Consult healthcare provider before combining medications",
+                  clinical_effects:
+                    clinicalEffects ||
+                    "See referenced literature for clinical effects",
+                  management:
+                    management ||
+                    "Consult healthcare provider before combining medications",
                   evidence_level: "Literature Review",
                 });
               }
@@ -1075,6 +1135,62 @@ export async function checkDrugInteractions(
     console.error("Error checking drug interactions:", error);
     return [];
   }
+}
+
+// Helper functions for drug interactions
+function extractClinicalEffects(
+  abstract: string,
+  drug1: string,
+  drug2: string,
+): string | null {
+  const text = abstract.toLowerCase();
+
+  // Look for specific clinical effect patterns
+  const effectPatterns = [
+    /(?:increased|elevated|higher)\s+(?:risk\s+of\s+)?([^.]{10,100})/gi,
+    /(?:decreased|reduced|lower)\s+(?:risk\s+of\s+)?([^.]{10,100})/gi,
+    /(?:may\s+cause|can\s+cause|leads\s+to)\s+([^.]{10,100})/gi,
+    /(?:result\s+in|results\s+in)\s+([^.]{10,100})/gi,
+    /(?:associated\s+with|linked\s+to)\s+([^.]{10,100})/gi,
+  ];
+
+  for (const pattern of effectPatterns) {
+    const matches = text.match(pattern);
+    if (matches) {
+      const effect = matches[0].trim();
+      if (effect.length > 15 && effect.length < 150) {
+        return effect;
+      }
+    }
+  }
+
+  return null;
+}
+
+function extractManagementAdvice(abstract: string): string | null {
+  const text = abstract.toLowerCase();
+
+  // Look for management advice patterns
+  const managementPatterns = [
+    /(?:monitor|monitoring)\s+([^.]{10,100})/gi,
+    /(?:avoid|avoiding)\s+([^.]{10,100})/gi,
+    /(?:adjust|adjusting)\s+([^.]{10,100})/gi,
+    /(?:reduce|reducing)\s+([^.]{10,100})/gi,
+    /(?:consider|considering)\s+([^.]{10,100})/gi,
+    /(?:recommend|recommended)\s+([^.]{10,100})/gi,
+  ];
+
+  for (const pattern of managementPatterns) {
+    const matches = text.match(pattern);
+    if (matches) {
+      const advice = matches[0].trim();
+      if (advice.length > 15 && advice.length < 150) {
+        return advice;
+      }
+    }
+  }
+
+  return null;
 }
 
 // Diagnostic Support Functions
@@ -1195,69 +1311,130 @@ export async function generateDifferentialDiagnosis(
             diagnosis: "Myocardial Infarction",
             probability: "High" as const,
             key_findings: ["ST elevation", "Troponin elevation"],
-            next_steps: ["ECG", "Cardiac enzymes", "Chest X-ray"]
+            next_steps: ["ECG", "Cardiac enzymes", "Chest X-ray"],
           },
           {
             diagnosis: "Pulmonary Embolism",
             probability: "Moderate" as const,
             key_findings: ["Dyspnea", "Tachycardia"],
-            next_steps: ["D-dimer", "CT-PA", "Wells score"]
+            next_steps: ["D-dimer", "CT-PA", "Wells score"],
           },
           {
             diagnosis: "GERD",
             probability: "Moderate" as const,
             key_findings: ["Heartburn", "Regurgitation"],
-            next_steps: ["PPI trial", "Endoscopy"]
-          }
+            next_steps: ["PPI trial", "Endoscopy"],
+          },
         ];
-        results.red_flags = ["Sudden onset", "Radiation to arm/jaw", "Diaphoresis", "Nausea"];
-        results.urgent_considerations = ["Rule out MI", "Consider PE", "Assess vital signs"];
+        results.red_flags = [
+          "Sudden onset",
+          "Radiation to arm/jaw",
+          "Diaphoresis",
+          "Nausea",
+        ];
+        results.urgent_considerations = [
+          "Rule out MI",
+          "Consider PE",
+          "Assess vital signs",
+        ];
       } else if (symptomString.includes("abdominal pain")) {
         results.possible_diagnoses = [
           {
             diagnosis: "Appendicitis",
             probability: "High" as const,
             key_findings: ["RLQ pain", "Rebound tenderness"],
-            next_steps: ["CT abdomen", "Surgical consult"]
+            next_steps: ["CT abdomen", "Surgical consult"],
           },
           {
             diagnosis: "Cholecystitis",
             probability: "Moderate" as const,
             key_findings: ["RUQ pain", "Murphy's sign"],
-            next_steps: ["Ultrasound", "LFTs"]
+            next_steps: ["Ultrasound", "LFTs"],
           },
           {
             diagnosis: "Gastroenteritis",
             probability: "Moderate" as const,
             key_findings: ["Nausea", "Vomiting", "Diarrhea"],
-            next_steps: ["Stool studies", "Supportive care"]
-          }
+            next_steps: ["Stool studies", "Supportive care"],
+          },
         ];
-        results.red_flags = ["Severe pain", "Peritoneal signs", "Fever", "Vomiting"];
-        results.urgent_considerations = ["Rule out surgical emergency", "Assess for peritonitis"];
+        results.red_flags = [
+          "Severe pain",
+          "Peritoneal signs",
+          "Fever",
+          "Vomiting",
+        ];
+        results.urgent_considerations = [
+          "Rule out surgical emergency",
+          "Assess for peritonitis",
+        ];
       } else if (symptomString.includes("headache")) {
-        results.possible_diagnoses = [
-          {
-            diagnosis: "Tension Headache",
-            probability: "High" as const,
-            key_findings: ["Bilateral", "Pressure-like"],
-            next_steps: ["Analgesics", "Stress management"]
-          },
-          {
-            diagnosis: "Migraine",
-            probability: "Moderate" as const,
-            key_findings: ["Unilateral", "Photophobia"],
-            next_steps: ["Triptans", "Preventive therapy"]
-          },
-          {
-            diagnosis: "Subarachnoid Hemorrhage",
-            probability: "Low" as const,
-            key_findings: ["Thunderclap onset", "Neck stiffness"],
-            next_steps: ["CT head", "LP if CT negative"]
-          }
-        ];
-        results.red_flags = ["Sudden onset", "Worst headache of life", "Fever", "Neck stiffness"];
-        results.urgent_considerations = ["Rule out SAH", "Assess for meningitis"];
+        // Check for classic meningitis presentation first
+        if (symptomString.includes("fever") && symptomString.includes("neck stiffness")) {
+          results.possible_diagnoses = [
+            {
+              diagnosis: "Bacterial Meningitis",
+              probability: "High" as const,
+              key_findings: ["Fever", "Neck stiffness", "Headache", "Altered mental status"],
+              next_steps: ["Immediate LP", "Blood cultures", "Empiric antibiotics", "CT head if focal signs"],
+            },
+            {
+              diagnosis: "Viral Meningitis",
+              probability: "Moderate" as const,
+              key_findings: ["Fever", "Neck stiffness", "Headache", "Less severe than bacterial"],
+              next_steps: ["LP", "CSF analysis", "Supportive care"],
+            },
+            {
+              diagnosis: "Subarachnoid Hemorrhage",
+              probability: "Moderate" as const,
+              key_findings: ["Thunderclap onset", "Neck stiffness", "Photophobia"],
+              next_steps: ["CT head", "LP if CT negative", "Neurosurgical consult"],
+            },
+          ];
+          results.red_flags = [
+            "Fever with neck stiffness",
+            "Altered mental status",
+            "Thunderclap onset",
+            "Focal neurological signs",
+          ];
+          results.urgent_considerations = [
+            "IMMEDIATE: Rule out bacterial meningitis",
+            "Consider empiric antibiotics",
+            "Assess for increased ICP",
+          ];
+        } else {
+          // Non-meningitis headache presentations
+          results.possible_diagnoses = [
+            {
+              diagnosis: "Tension Headache",
+              probability: "High" as const,
+              key_findings: ["Bilateral", "Pressure-like", "No fever"],
+              next_steps: ["Analgesics", "Stress management"],
+            },
+            {
+              diagnosis: "Migraine",
+              probability: "Moderate" as const,
+              key_findings: ["Unilateral", "Photophobia", "Nausea"],
+              next_steps: ["Triptans", "Preventive therapy"],
+            },
+            {
+              diagnosis: "Subarachnoid Hemorrhage",
+              probability: "Low" as const,
+              key_findings: ["Thunderclap onset", "Severe intensity"],
+              next_steps: ["CT head", "LP if CT negative"],
+            },
+          ];
+          results.red_flags = [
+            "Sudden onset",
+            "Worst headache of life",
+            "Fever",
+            "Neck stiffness",
+          ];
+          results.urgent_considerations = [
+            "Rule out SAH",
+            "Assess for meningitis if fever present",
+          ];
+        }
       }
     }
 
@@ -1280,7 +1457,7 @@ export async function getRiskCalculators(
     // If specific condition requested, try dynamic search first
     if (condition) {
       const searchTerm = `"${condition}" AND "risk calculator"`;
-      
+
       try {
         const searchRes = await superagent
           .get(`${PUBMED_API_BASE}/esearch.fcgi`)
@@ -1327,10 +1504,12 @@ export async function getRiskCalculators(
                     type: "number" as const,
                     required: true,
                   })),
-                  calculation: "See referenced literature for calculation details",
+                  calculation:
+                    "See referenced literature for calculation details",
                   interpretation: {
                     low_risk: "See referenced literature for interpretation",
-                    moderate_risk: "See referenced literature for interpretation",
+                    moderate_risk:
+                      "See referenced literature for interpretation",
                     high_risk: "See referenced literature for interpretation",
                   },
                   references: [article.journal, article.title],
@@ -1348,16 +1527,100 @@ export async function getRiskCalculators(
       }
     }
 
-    // Fallback to essential risk calculators if dynamic search fails
-    return [
+    // Try to find additional cardiovascular risk calculators through dynamic search
+    const cardiovascularTerms = [
+      "ASCVD risk calculator",
+      "Framingham risk score",
+      "CHA2DS2-VASc",
+      "Wells score",
+      "TIMI risk score",
+    ];
+    const additionalCalculators: RiskCalculator[] = [];
+
+    for (const term of cardiovascularTerms) {
+      try {
+        const searchRes = await superagent
+          .get(`${PUBMED_API_BASE}/esearch.fcgi`)
+          .query({
+            db: "pubmed",
+            term: `"${term}" AND "calculator" AND "risk"`,
+            retmode: "json",
+            retmax: 2,
+            sort: "relevance",
+          })
+          .set("User-Agent", USER_AGENT);
+
+        const idList = searchRes.body.esearchresult?.idlist || [];
+        if (idList.length > 0) {
+          const fetchRes = await superagent
+            .get(`${PUBMED_API_BASE}/efetch.fcgi`)
+            .query({
+              db: "pubmed",
+              id: idList.join(","),
+              retmode: "xml",
+            })
+            .set("User-Agent", USER_AGENT);
+
+          const articles = parsePubMedXML(fetchRes.text);
+
+          for (const article of articles) {
+            const text = `${article.title} ${article.abstract}`.toLowerCase();
+
+            if (
+              text.includes("calculator") ||
+              text.includes("score") ||
+              text.includes("risk")
+            ) {
+              const calculatorName = extractCalculatorName(article.title, text);
+              const parameters = extractParameters(text);
+
+              if (
+                calculatorName &&
+                !additionalCalculators.find((c) => c.name === calculatorName)
+              ) {
+                additionalCalculators.push({
+                  name: calculatorName,
+                  description: `Risk calculator found in literature: ${article.title}`,
+                  parameters: parameters.map((param) => ({
+                    name: param,
+                    type: "number" as const,
+                    required: true,
+                  })),
+                  calculation:
+                    "See referenced literature for calculation details",
+                  interpretation: {
+                    low_risk: "See referenced literature for interpretation",
+                    moderate_risk:
+                      "See referenced literature for interpretation",
+                    high_risk: "See referenced literature for interpretation",
+                  },
+                  references: [article.journal, article.title],
+                });
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Error searching for ${term}:`, error);
+        continue;
+      }
+    }
+
+    // Essential risk calculators as fallback
+    const essentialCalculators: RiskCalculator[] = [
       {
         name: "APGAR Score",
-        description: "Assessment of newborn's physical condition at 1 and 5 minutes after birth",
+        description:
+          "Assessment of newborn's physical condition at 1 and 5 minutes after birth",
         parameters: [
           {
             name: "Appearance (Color)",
             type: "select",
-            options: ["0 - Blue/pale", "1 - Body pink, extremities blue", "2 - Completely pink"],
+            options: [
+              "0 - Blue/pale",
+              "1 - Body pink, extremities blue",
+              "2 - Completely pink",
+            ],
             required: true,
           },
           {
@@ -1369,7 +1632,11 @@ export async function getRiskCalculators(
           {
             name: "Grimace (Reflex Irritability)",
             type: "select",
-            options: ["0 - No response", "1 - Grimace", "2 - Cry or active withdrawal"],
+            options: [
+              "0 - No response",
+              "1 - Grimace",
+              "2 - Cry or active withdrawal",
+            ],
             required: true,
           },
           {
@@ -1391,7 +1658,10 @@ export async function getRiskCalculators(
           moderate_risk: "4-6: Some assistance needed, may need stimulation",
           high_risk: "0-3: Immediate resuscitation required",
         },
-        references: ["American Academy of Pediatrics", "Neonatal Resuscitation Program"],
+        references: [
+          "American Academy of Pediatrics",
+          "Neonatal Resuscitation Program",
+        ],
       },
       {
         name: "Bishop Score",
@@ -1427,6 +1697,8 @@ export async function getRiskCalculators(
         references: ["ACOG Practice Bulletin", "Obstetric Guidelines"],
       },
     ];
+
+    return [...essentialCalculators, ...additionalCalculators];
   } catch (error) {
     console.error("Error getting risk calculators:", error);
     return [];
@@ -1486,7 +1758,7 @@ export async function getLabValues(testName?: string): Promise<LabValue[]> {
     // If specific test requested, try dynamic search first
     if (testName) {
       const searchTerm = `"${testName}" AND "normal range"`;
-      
+
       try {
         const searchRes = await superagent
           .get(`${PUBMED_API_BASE}/esearch.fcgi`)
@@ -1516,7 +1788,10 @@ export async function getLabValues(testName?: string): Promise<LabValue[]> {
           for (const article of articles) {
             const text = `${article.title} ${article.abstract}`.toLowerCase();
 
-            if (text.includes("normal range") || text.includes("reference range")) {
+            if (
+              text.includes("normal range") ||
+              text.includes("reference range")
+            ) {
               const ranges = extractLabRanges(text, testName);
               const criticalValues = extractCriticalValues(text);
 
@@ -1525,8 +1800,10 @@ export async function getLabValues(testName?: string): Promise<LabValue[]> {
                   test_name: testName,
                   normal_ranges: ranges,
                   critical_values: criticalValues,
-                  interpretation: "See referenced literature for interpretation",
-                  clinical_significance: "See referenced literature for clinical significance",
+                  interpretation:
+                    "See referenced literature for interpretation",
+                  clinical_significance:
+                    "See referenced literature for clinical significance",
                 });
               }
             }
@@ -1541,8 +1818,80 @@ export async function getLabValues(testName?: string): Promise<LabValue[]> {
       }
     }
 
-    // Fallback to essential lab values if dynamic search fails or no specific test requested
-    return [
+    // Try to find additional essential lab values through dynamic search
+    const essentialTests = [
+      "glucose",
+      "creatinine",
+      "alt",
+      "ast",
+      "cholesterol",
+      "ldl",
+      "hdl",
+      "triglycerides",
+    ];
+    const additionalLabValues: LabValue[] = [];
+
+    for (const test of essentialTests) {
+      try {
+        const searchTerm = `"${test}" AND "normal range" AND "reference values"`;
+
+        const searchRes = await superagent
+          .get(`${PUBMED_API_BASE}/esearch.fcgi`)
+          .query({
+            db: "pubmed",
+            term: searchTerm,
+            retmode: "json",
+            retmax: 2,
+            sort: "relevance",
+          })
+          .set("User-Agent", USER_AGENT);
+
+        const idList = searchRes.body.esearchresult?.idlist || [];
+        if (idList.length > 0) {
+          const fetchRes = await superagent
+            .get(`${PUBMED_API_BASE}/efetch.fcgi`)
+            .query({
+              db: "pubmed",
+              id: idList.join(","),
+              retmode: "xml",
+            })
+            .set("User-Agent", USER_AGENT);
+
+          const articles = parsePubMedXML(fetchRes.text);
+
+          for (const article of articles) {
+            const text = `${article.title} ${article.abstract}`.toLowerCase();
+
+            if (
+              text.includes("normal range") ||
+              text.includes("reference range")
+            ) {
+              const ranges = extractLabRanges(text, test);
+              const criticalValues = extractCriticalValues(text);
+
+              if (ranges.length > 0) {
+                additionalLabValues.push({
+                  test_name: test.charAt(0).toUpperCase() + test.slice(1),
+                  normal_ranges: ranges,
+                  critical_values: criticalValues,
+                  interpretation:
+                    "See referenced literature for interpretation",
+                  clinical_significance:
+                    "See referenced literature for clinical significance",
+                });
+                break; // Only take the first good result for each test
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Error searching for ${test}:`, error);
+        continue;
+      }
+    }
+
+    // Combine essential lab values with dynamically found ones
+    const essentialLabValues: LabValue[] = [
       {
         test_name: "Hemoglobin",
         normal_ranges: [
@@ -1582,7 +1931,8 @@ export async function getLabValues(testName?: string): Promise<LabValue[]> {
         ],
         critical_values: { low: "<7.0", high: ">20.0" },
         interpretation: "Measures oxygen-carrying capacity of blood",
-        clinical_significance: "Low values indicate anemia; high values may indicate polycythemia",
+        clinical_significance:
+          "Low values indicate anemia; high values may indicate polycythemia",
       },
       {
         test_name: "White Blood Cell Count",
@@ -1609,9 +1959,12 @@ export async function getLabValues(testName?: string): Promise<LabValue[]> {
         ],
         critical_values: { low: "<2.0", high: ">30.0" },
         interpretation: "Measures immune system cell count",
-        clinical_significance: "Low values indicate immunosuppression; high values suggest infection or inflammation",
+        clinical_significance:
+          "Low values indicate immunosuppression; high values suggest infection or inflammation",
       },
     ];
+
+    return [...essentialLabValues, ...additionalLabValues];
   } catch (error) {
     console.error("Error getting lab values:", error);
     return [];
@@ -1701,12 +2054,13 @@ export async function getDiagnosticCriteria(
   condition: string,
 ): Promise<DiagnosticCriteria | null> {
   try {
-    // Search for diagnostic criteria in medical literature
+    // Search for diagnostic criteria in medical literature with more specific terms
     const terms = [
-      `"${condition}" AND "diagnostic criteria"`,
-      `"${condition}" AND "DSM"`,
-      `"${condition}" AND "ICD"`,
-      `"${condition}" AND "diagnosis" AND "criteria"`,
+      `"${condition}" AND "diagnostic criteria" AND "guidelines"`,
+      `"${condition}" AND "DSM-5"`,
+      `"${condition}" AND "ICD-11"`,
+      `"${condition}" AND "diagnosis" AND "classification"`,
+      `"${condition}" AND "definition" AND "criteria"`,
     ];
 
     const criteria: DiagnosticCriteria = {
@@ -1724,7 +2078,7 @@ export async function getDiagnosticCriteria(
             db: "pubmed",
             term: term,
             retmode: "json",
-            retmax: 5,
+            retmax: 2,
             sort: "relevance",
           })
           .set("User-Agent", USER_AGENT);
@@ -1743,11 +2097,23 @@ export async function getDiagnosticCriteria(
           const articles = parsePubMedXML(fetchRes.text);
 
           for (const article of articles) {
-            const text = `${article.title} ${article.abstract}`.toLowerCase();
+            const text = `${article.title} ${article.abstract}`;
+            const textLower = text.toLowerCase();
 
-            if (text.includes("criteria") || text.includes("diagnosis")) {
-              // Extract criteria sets using NLP patterns
-              const criteriaSets = extractCriteriaSets(text, condition);
+            // Only process if it contains actual diagnostic criteria
+            if (
+              textLower.includes("criteria") &&
+              (textLower.includes("diagnosis") ||
+                textLower.includes("classification")) &&
+              !textLower.includes("no criteria") &&
+              !textLower.includes("criteria not")
+            ) {
+              // Extract structured criteria sets using improved NLP patterns
+              const criteriaSets = extractStructuredCriteria(
+                text,
+                condition,
+                article.journal,
+              );
               const redFlags = extractRedFlags(text);
               const differential = extractDifferentialDiagnosis(text);
 
@@ -1772,10 +2138,20 @@ export async function getDiagnosticCriteria(
       }
     }
 
-    // Return null if no criteria found
+    // If no criteria found through dynamic search, return null
+    // This is better than showing fragmented, unusable data
     if (criteria.criteria_sets.length === 0) {
       return null;
     }
+
+    // Remove duplicates and clean up the results
+    const uniqueCriteriaSets = criteria.criteria_sets.filter(
+      (set, index, self) =>
+        index ===
+        self.findIndex((s) => s.name === set.name && s.source === set.source),
+    );
+
+    criteria.criteria_sets = uniqueCriteriaSets;
 
     return criteria;
   } catch (error) {
@@ -1785,38 +2161,220 @@ export async function getDiagnosticCriteria(
 }
 
 // Helper functions for extracting criteria from text
-function extractCriteriaSets(text: string, condition: string): any[] {
+function extractStructuredCriteria(
+  text: string,
+  condition: string,
+  journal: string,
+): any[] {
   const criteriaSets: any[] = [];
-  const criteriaPatterns = [
-    /criteria\s*:?\s*([^.]*)/gi,
-    /diagnostic\s*criteria\s*:?\s*([^.]*)/gi,
+  const textLower = text.toLowerCase();
+
+  // Look for specific diagnostic patterns - balanced approach
+  const diagnosticPatterns = [
+    // Blood pressure patterns
+    /(?:systolic|sbp)\s*(\d+)-(\d+)\s*(?:mmhg|mm hg).*?(?:diastolic|dbp)\s*(\d+)-(\d+)\s*(?:mmhg|mm hg)/gi,
+    /(?:systolic|sbp)\s*(?:≥|>=|greater than or equal to)\s*(\d+)\s*(?:mmhg|mm hg).*?(?:diastolic|dbp)\s*(?:≥|>=|greater than or equal to)\s*(\d+)\s*(?:mmhg|mm hg)/gi,
+    /(?:stage\s*[12]|mild|moderate|severe)\s*[:\s]*(?:systolic|sbp|diastolic|dbp)\s*[^.]{10,80}/gi,
+
+    // Blood glucose patterns
+    /(?:fasting|fpg|fasting plasma glucose)\s*(?:≥|>=|greater than or equal to)\s*(\d+)\s*(?:mg\/dl|mg\/dL)/gi,
+    /(?:hba1c|hemoglobin a1c|a1c)\s*(?:≥|>=|greater than or equal to)\s*(\d+\.?\d*)\s*%/gi,
+    /(?:random|casual)\s*(?:glucose|blood glucose)\s*(?:≥|>=|greater than or equal to)\s*(\d+)\s*(?:mg\/dl|mg\/dL)/gi,
+    /(?:ogtt|oral glucose tolerance test)\s*(?:≥|>=|greater than or equal to)\s*(\d+)\s*(?:mg\/dl|mg\/dL)/gi,
+
+    // General criteria patterns - more balanced
+    /(?:diagnostic criteria|diagnosis requires?|must have)[:\s]*([^.]{20,120})/gi,
+    /(?:criteria|definition)[:\s]*([^.]{20,120})/gi,
   ];
 
-  criteriaPatterns.forEach((pattern) => {
+  // Extract blood pressure criteria
+  if (
+    textLower.includes("hypertension") ||
+    textLower.includes("blood pressure")
+  ) {
+    const bpCriteria = extractBloodPressureCriteria(text);
+    if (bpCriteria.length > 0) {
+      criteriaSets.push({
+        name: "Hypertension Diagnostic Criteria",
+        source: journal || "Literature Review",
+        criteria: bpCriteria,
+      });
+    }
+  }
+
+  // Extract diabetes criteria
+  if (textLower.includes("diabetes") || textLower.includes("diabetic")) {
+    const diabetesCriteria = extractDiabetesCriteria(text);
+    if (diabetesCriteria.length > 0) {
+      criteriaSets.push({
+        name: "Diabetes Diagnostic Criteria",
+        source: journal || "Literature Review",
+        criteria: diabetesCriteria,
+      });
+    }
+  }
+
+  // Extract general criteria patterns - only if they look like actual diagnostic criteria
+  diagnosticPatterns.forEach((pattern) => {
     const matches = text.match(pattern);
     if (matches) {
       matches.forEach((match) => {
-        const criteria = match
-          .replace(/criteria\s*:?\s*|diagnostic\s*criteria\s*:?\s*/gi, "")
-          .trim();
-        if (criteria.length > 10) {
-          criteriaSets.push({
-            name: `${condition} Criteria`,
-            source: "Literature Review",
-            criteria: [
-              {
-                category: "Diagnostic Criteria",
-                items: [criteria],
-                required_count: 1,
-              },
-            ],
-          });
+        const criteria = match.trim();
+        // Balanced filtering - must contain actual diagnostic information
+        if (
+          criteria.length > 20 &&
+          criteria.length < 150 &&
+          (criteria.includes("≥") ||
+            criteria.includes(">") ||
+            criteria.includes("<") ||
+            criteria.includes("stage") ||
+            criteria.includes("criteria") ||
+            criteria.includes("diagnosis") ||
+            criteria.includes("mmhg") ||
+            criteria.includes("mg/dl") ||
+            criteria.includes("%"))
+        ) {
+          // Try to extract structured information
+          const structuredCriteria = parseCriteriaText(criteria, condition);
+          if (structuredCriteria.length > 0) {
+            criteriaSets.push({
+              name: `${condition} Criteria`,
+              source: journal || "Literature Review",
+              criteria: structuredCriteria,
+            });
+          }
         }
       });
     }
   });
 
   return criteriaSets;
+}
+
+function extractBloodPressureCriteria(text: string): any[] {
+  const criteria: any[] = [];
+  const textLower = text.toLowerCase();
+
+  // Look for specific BP values
+  const stage1Pattern =
+    /(?:stage\s*1|mild)[:\s]*(?:systolic|sbp)\s*(\d+)-(\d+)\s*(?:mmhg|mm hg).*?(?:diastolic|dbp)\s*(\d+)-(\d+)\s*(?:mmhg|mm hg)/gi;
+  const stage2Pattern =
+    /(?:stage\s*2|moderate|severe)[:\s]*(?:systolic|sbp)\s*(?:≥|>=|greater than or equal to)\s*(\d+)\s*(?:mmhg|mm hg).*?(?:diastolic|dbp)\s*(?:≥|>=|greater than or equal to)\s*(\d+)\s*(?:mmhg|mm hg)/gi;
+  const crisisPattern =
+    /(?:crisis|emergency)[:\s]*(?:systolic|sbp)\s*(?:>|greater than)\s*(\d+)\s*(?:mmhg|mm hg).*?(?:diastolic|dbp)\s*(?:>|greater than)\s*(\d+)\s*(?:mmhg|mm hg)/gi;
+
+  if (stage1Pattern.test(text)) {
+    criteria.push({
+      category: "Stage 1 Hypertension",
+      items: ["Systolic 130-139 mmHg", "Diastolic 80-89 mmHg"],
+      required_count: 1,
+    });
+  }
+
+  if (stage2Pattern.test(text)) {
+    criteria.push({
+      category: "Stage 2 Hypertension",
+      items: ["Systolic ≥140 mmHg", "Diastolic ≥90 mmHg"],
+      required_count: 1,
+    });
+  }
+
+  if (crisisPattern.test(text)) {
+    criteria.push({
+      category: "Hypertensive Crisis",
+      items: ["Systolic >180 mmHg", "Diastolic >120 mmHg"],
+      required_count: 1,
+    });
+  }
+
+  return criteria;
+}
+
+function extractDiabetesCriteria(text: string): any[] {
+  const criteria: any[] = [];
+  const textLower = text.toLowerCase();
+
+  // Look for specific diabetes criteria
+  const fpgPattern =
+    /(?:fasting|fpg|fasting plasma glucose)\s*(?:≥|>=|greater than or equal to)\s*(\d+)\s*(?:mg\/dl|mg\/dL)/gi;
+  const a1cPattern =
+    /(?:hba1c|hemoglobin a1c|a1c)\s*(?:≥|>=|greater than or equal to)\s*(\d+\.?\d*)\s*%/gi;
+  const randomPattern =
+    /(?:random|casual)\s*(?:glucose|blood glucose)\s*(?:≥|>=|greater than or equal to)\s*(\d+)\s*(?:mg\/dl|mg\/dL)/gi;
+  const ogttPattern =
+    /(?:ogtt|oral glucose tolerance test)\s*(?:≥|>=|greater than or equal to)\s*(\d+)\s*(?:mg\/dl|mg\/dL)/gi;
+
+  if (fpgPattern.test(text)) {
+    criteria.push({
+      category: "Fasting Plasma Glucose",
+      items: ["≥126 mg/dL (7.0 mmol/L)"],
+      required_count: 1,
+    });
+  }
+
+  if (a1cPattern.test(text)) {
+    criteria.push({
+      category: "Hemoglobin A1C",
+      items: ["≥6.5%"],
+      required_count: 1,
+    });
+  }
+
+  if (randomPattern.test(text)) {
+    criteria.push({
+      category: "Random Plasma Glucose",
+      items: ["≥200 mg/dL (11.1 mmol/L) with symptoms"],
+      required_count: 1,
+    });
+  }
+
+  if (ogttPattern.test(text)) {
+    criteria.push({
+      category: "Oral Glucose Tolerance Test",
+      items: ["2-hour plasma glucose ≥200 mg/dL (11.1 mmol/L)"],
+      required_count: 1,
+    });
+  }
+
+  return criteria;
+}
+
+function parseCriteriaText(criteria: string, condition: string): any[] {
+  // Try to parse structured criteria from text - be more selective
+  const items = criteria
+    .split(/[,;]|\band\b/)
+    .map((item) => item.trim())
+    .filter((item) => {
+      // Include items that look like actual diagnostic criteria
+      return (
+        item.length > 8 &&
+        item.length < 120 &&
+        (item.includes("≥") ||
+          item.includes(">") ||
+          item.includes("<") ||
+          item.includes("stage") ||
+          item.includes("criteria") ||
+          item.includes("diagnosis") ||
+          item.includes("mmhg") ||
+          item.includes("mg/dl") ||
+          item.includes("%") ||
+          item.includes("hypertension") ||
+          item.includes("diabetes") ||
+          item.includes("glucose"))
+      );
+    });
+
+  if (items.length > 0) {
+    return [
+      {
+        category: "Diagnostic Criteria",
+        items: items,
+        required_count: items.length > 1 ? Math.ceil(items.length / 2) : 1,
+      },
+    ];
+  }
+
+  return [];
 }
 
 function extractRedFlags(text: string): string[] {
