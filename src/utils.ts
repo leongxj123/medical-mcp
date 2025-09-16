@@ -286,16 +286,18 @@ function randomDelay(min: number, max: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, delay));
 }
 
-// Google Scholar API functions
+// Enhanced Medical Scraper System - No Hardcoded Data
 export async function searchGoogleScholar(
   query: string,
 ): Promise<GoogleScholarArticle[]> {
   let browser;
   try {
-    // Add a small random delay to avoid rate limiting
-    await randomDelay(1000, 3000);
+    console.log(`🔍 Scraping Google Scholar for: ${query}`);
+    
+    // Add random delay to avoid rate limiting
+    await randomDelay(2000, 5000);
 
-    // Launch browser with stealth settings
+    // Enhanced browser configuration for better anti-detection
     browser = await puppeteer.launch({
       headless: true,
       args: [
@@ -308,111 +310,238 @@ export async function searchGoogleScholar(
         "--disable-gpu",
         "--disable-web-security",
         "--disable-features=VizDisplayCompositor",
-        "--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "--disable-blink-features=AutomationControlled",
+        "--disable-extensions",
+        "--disable-plugins",
+        "--disable-images",
+        "--disable-javascript",
+        "--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
       ],
     });
 
     const page = await browser.newPage();
 
-    // Set viewport and user agent
-    await page.setViewport({ width: 1920, height: 1080 });
-    await page.setUserAgent(
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    );
-
-    // Add extra headers to appear more like a real browser
-    await page.setExtraHTTPHeaders({
-      "Accept-Language": "en-US,en;q=0.9",
-      "Accept-Encoding": "gzip, deflate, br",
-      Accept:
-        "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-      "Cache-Control": "no-cache",
-      Pragma: "no-cache",
+    // Enhanced stealth configuration
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', {
+        get: () => undefined,
+      });
     });
 
-    // Navigate to Google Scholar
-    const searchUrl = `${GOOGLE_SCHOLAR_API_BASE}?q=${encodeURIComponent(query)}&hl=en`;
-    await page.goto(searchUrl, { waitUntil: "networkidle2", timeout: 30000 });
+    // Random viewport size
+    const viewports = [
+      { width: 1920, height: 1080 },
+      { width: 1366, height: 768 },
+      { width: 1440, height: 900 },
+      { width: 1536, height: 864 },
+    ];
+    const randomViewport = viewports[Math.floor(Math.random() * viewports.length)];
+    await page.setViewport(randomViewport);
 
-    // Wait for results to load with multiple possible selectors
+    // Rotate user agents
+    const userAgents = [
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+    ];
+    const randomUA = userAgents[Math.floor(Math.random() * userAgents.length)];
+    await page.setUserAgent(randomUA);
+
+    // Enhanced headers
+    await page.setExtraHTTPHeaders({
+      "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
+      "Accept-Encoding": "gzip, deflate, br",
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
+      "Sec-Fetch-Dest": "document",
+      "Sec-Fetch-Mode": "navigate",
+      "Sec-Fetch-Site": "none",
+      "Sec-Fetch-User": "?1",
+      "Upgrade-Insecure-Requests": "1",
+    });
+
+    // Navigate to Google Scholar with enhanced query
+    const searchUrl = `${GOOGLE_SCHOLAR_API_BASE}?q=${encodeURIComponent(query)}&hl=en&as_sdt=0%2C5&as_ylo=2020`;
+    await page.goto(searchUrl, { 
+      waitUntil: "networkidle2", 
+      timeout: 45000 
+    });
+
+    // Wait for results with multiple fallback selectors
     try {
-      await page.waitForSelector(".gs_r, .gs_ri", { timeout: 15000 });
+      await page.waitForSelector(".gs_r, .gs_ri, .gs_or, [data-rp]", { timeout: 20000 });
     } catch (error) {
-      // If no results found, check if there's a "no results" message
-      const noResults = await page.$(".gs_r");
-      if (!noResults) {
-        throw new Error("No search results found or page structure changed");
+      // Try alternative selectors
+      try {
+        await page.waitForSelector(".g, .rc, .r", { timeout: 10000 });
+      } catch (error2) {
+        console.error("No search results found or page structure changed");
+        return [];
       }
     }
 
+    // Enhanced data extraction with better selectors
     return await page.evaluate(() => {
       const results: GoogleScholarArticle[] = [];
-      // Try multiple selectors for different Google Scholar layouts
-      const articleElements = document.querySelectorAll(
-        ".gs_r, .gs_ri, [data-rp]",
-      );
+      
+      // Multiple selector strategies for different Google Scholar layouts
+      const selectors = [
+        ".gs_r, .gs_ri, .gs_or",
+        ".g, .rc, .r",
+        "[data-rp]",
+        ".gs_rt, .gs_ri"
+      ];
+      
+      let articleElements: NodeListOf<Element> | null = null;
+      for (const selector of selectors) {
+        articleElements = document.querySelectorAll(selector);
+        if (articleElements.length > 0) break;
+      }
+
+      if (!articleElements || articleElements.length === 0) {
+        return results;
+      }
 
       articleElements.forEach((element) => {
-        // Try multiple selectors for title
-        const titleElement =
-          element.querySelector(".gs_rt a, .gs_rt, h3 a, h3") ||
-          element.querySelector("a[data-clk]") ||
-          element.querySelector("h3");
-        const title = titleElement?.textContent?.trim() || "";
-        const url = (titleElement as HTMLAnchorElement)?.href || "";
+        try {
+          // Enhanced title extraction
+          const titleSelectors = [
+            ".gs_rt a, .gs_rt",
+            "h3 a, h3",
+            "a[data-clk]",
+            ".gs_rt a",
+            ".rc h3 a",
+            ".r h3 a"
+          ];
+          
+          let title = "";
+          let url = "";
+          for (const selector of titleSelectors) {
+            const titleElement = element.querySelector(selector);
+            if (titleElement) {
+              title = titleElement.textContent?.trim() || "";
+              url = (titleElement as HTMLAnchorElement)?.href || "";
+              if (title) break;
+            }
+          }
 
-        // Try multiple selectors for authors/venue
-        const authorsElement =
-          element.querySelector(".gs_a, .gs_authors, .gs_venue") ||
-          element.querySelector('[class*="author"]') ||
-          element.querySelector('[class*="venue"]');
-        const authors = authorsElement?.textContent?.trim() || "";
+          // Enhanced authors/venue extraction
+          const authorSelectors = [
+            ".gs_a, .gs_authors, .gs_venue",
+            '[class*="author"]',
+            '[class*="venue"]',
+            ".gs_a",
+            ".rc .s",
+            ".r .s"
+          ];
+          
+          let authors = "";
+          for (const selector of authorSelectors) {
+            const authorElement = element.querySelector(selector);
+            if (authorElement) {
+              authors = authorElement.textContent?.trim() || "";
+              if (authors) break;
+            }
+          }
 
-        // Try multiple selectors for abstract
-        const abstractElement =
-          element.querySelector(".gs_rs, .gs_rs_a, .gs_snippet") ||
-          element.querySelector('[class*="snippet"]') ||
-          element.querySelector('[class*="abstract"]');
-        const abstract = abstractElement?.textContent?.trim() || "";
+          // Enhanced abstract extraction
+          const abstractSelectors = [
+            ".gs_rs, .gs_rs_a, .gs_snippet",
+            '[class*="snippet"]',
+            '[class*="abstract"]',
+            ".gs_rs",
+            ".rc .st",
+            ".r .st"
+          ];
+          
+          let abstract = "";
+          for (const selector of abstractSelectors) {
+            const abstractElement = element.querySelector(selector);
+            if (abstractElement) {
+              abstract = abstractElement.textContent?.trim() || "";
+              if (abstract) break;
+            }
+          }
 
-        // Try multiple selectors for citations
-        const citationsElement =
-          element.querySelector(".gs_fl a, .gs_fl") ||
-          element.querySelector('[class*="citation"]') ||
-          element.querySelector('a[href*="cites"]');
-        const citations = citationsElement?.textContent?.trim() || "";
+          // Enhanced citation extraction
+          const citationSelectors = [
+            ".gs_fl a, .gs_fl",
+            '[class*="citation"]',
+            'a[href*="cites"]',
+            ".gs_fl",
+            ".rc .f",
+            ".r .f"
+          ];
+          
+          let citations = "";
+          for (const selector of citationSelectors) {
+            const citationElement = element.querySelector(selector);
+            if (citationElement) {
+              citations = citationElement.textContent?.trim() || "";
+              if (citations) break;
+            }
+          }
 
-        // Extract year from various sources
-        let year = "";
-        const yearMatch =
-          authors.match(/(\d{4})/) ||
-          title.match(/(\d{4})/) ||
-          abstract.match(/(\d{4})/);
-        if (yearMatch) {
-          year = yearMatch[1];
-        }
+          // Enhanced year extraction with better patterns
+          let year = "";
+          const yearPatterns = [
+            /(\d{4})/g,
+            /\((\d{4})\)/g,
+            /(\d{4})\s*[–-]/g,
+            /(\d{4})\s*$/g
+          ];
+          
+          const textSources = [authors, title, abstract, citations];
+          for (const text of textSources) {
+            for (const pattern of yearPatterns) {
+              const matches = text.match(pattern);
+              if (matches) {
+                const years = matches.map(m => m.replace(/\D/g, '')).filter(y => y.length === 4);
+                const validYears = years.filter(y => parseInt(y) >= 1900 && parseInt(y) <= new Date().getFullYear() + 1);
+                if (validYears.length > 0) {
+                  year = validYears[validYears.length - 1]; // Get most recent year
+                  break;
+                }
+              }
+            }
+            if (year) break;
+          }
 
-        // Extract journal from authors string or other sources
-        let journal = "";
-        const journalMatch =
-          authors.match(/- ([^-]+)$/) ||
-          authors.match(/, ([^,]+)$/) ||
-          authors.match(/in ([^,]+)/);
-        if (journalMatch) {
-          journal = journalMatch[1].trim();
-        }
+          // Enhanced journal extraction
+          let journal = "";
+          const journalPatterns = [
+            /- ([^-]+)$/,
+            /, ([^,]+)$/,
+            /in ([^,]+)/,
+            /([A-Z][^,]+(?:Journal|Review|Medicine|Health|Science|Research))/i,
+            /([A-Z][^,]+(?:Lancet|Nature|Science|NEJM|JAMA|BMJ))/i
+          ];
+          
+          for (const pattern of journalPatterns) {
+            const match = authors.match(pattern);
+            if (match) {
+              journal = match[1].trim();
+              break;
+            }
+          }
 
-        if (title && title.length > 5) {
-          // Only include if title is substantial
-          results.push({
-            title,
-            authors,
-            abstract,
-            journal,
-            year,
-            citations,
-            url,
-          });
+          // Quality filter - only include substantial results
+          if (title && title.length > 10 && title.length < 500) {
+            results.push({
+              title: title.substring(0, 500), // Limit title length
+              authors: authors.substring(0, 300), // Limit authors length
+              abstract: abstract.substring(0, 1000), // Limit abstract length
+              journal: journal.substring(0, 200), // Limit journal length
+              year,
+              citations: citations.substring(0, 100), // Limit citations length
+              url: url.substring(0, 500), // Limit URL length
+            });
+          }
+        } catch (error) {
+          console.error("Error processing article element:", error);
+          // Skip this iteration
         }
       });
 
@@ -425,6 +554,224 @@ export async function searchGoogleScholar(
     if (browser) {
       await browser.close();
     }
+  }
+}
+
+// Additional Medical Scrapers - No Hardcoded Data
+export async function searchMedicalDatabases(
+  query: string,
+): Promise<GoogleScholarArticle[]> {
+  console.log(`🔍 Searching medical databases for: ${query}`);
+  
+  // Try multiple medical databases in parallel
+  const searches = await Promise.allSettled([
+    searchPubMedArticles(query, 5),
+    searchGoogleScholar(query),
+    searchCochraneLibrary(query),
+    searchClinicalTrials(query),
+  ]);
+
+  const results: GoogleScholarArticle[] = [];
+
+  // Process PubMed results
+  if (searches[0].status === "fulfilled" && searches[0].value) {
+    searches[0].value.forEach((article) => {
+      results.push({
+        title: article.title,
+        authors: article.authors.join(", "),
+        abstract: article.abstract,
+        journal: article.journal,
+        year: article.publication_date.split("-")[0],
+        citations: "",
+        url: `https://pubmed.ncbi.nlm.nih.gov/${article.pmid}/`,
+      });
+    });
+  }
+
+  // Process Google Scholar results
+  if (searches[1].status === "fulfilled" && searches[1].value) {
+    results.push(...searches[1].value);
+  }
+
+  // Process Cochrane Library results
+  if (searches[2].status === "fulfilled" && searches[2].value) {
+    results.push(...searches[2].value);
+  }
+
+  // Process Clinical Trials results
+  if (searches[3].status === "fulfilled" && searches[3].value) {
+    results.push(...searches[3].value);
+  }
+
+  // Remove duplicates based on title similarity
+  const uniqueResults = results.filter((article, index, self) =>
+    index === self.findIndex(a => 
+      a.title.toLowerCase().replace(/[^\w\s]/g, "") === 
+      article.title.toLowerCase().replace(/[^\w\s]/g, "")
+    )
+  );
+
+  return uniqueResults.slice(0, 20); // Limit to 20 results
+}
+
+// Search Cochrane Library
+async function searchCochraneLibrary(query: string): Promise<GoogleScholarArticle[]> {
+  let browser;
+  try {
+    console.log(`🔍 Scraping Cochrane Library for: ${query}`);
+    
+    await randomDelay(1000, 3000);
+
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-accelerated-2d-canvas",
+        "--no-first-run",
+        "--no-zygote",
+        "--disable-gpu",
+        "--disable-web-security",
+        "--disable-features=VizDisplayCompositor",
+        "--disable-blink-features=AutomationControlled",
+        "--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+      ],
+    });
+
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1920, height: 1080 });
+    await page.setUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36");
+
+    // Search Cochrane Library
+    const searchUrl = `https://www.cochranelibrary.com/search?q=${encodeURIComponent(query)}`;
+    await page.goto(searchUrl, { waitUntil: "networkidle2", timeout: 30000 });
+
+    return await page.evaluate(() => {
+      const results: GoogleScholarArticle[] = [];
+      const articles = document.querySelectorAll(".search-result-item, .result-item, .search-result");
+      
+      articles.forEach((article) => {
+        const titleElement = article.querySelector("h3 a, .title a, .result-title a");
+        const title = titleElement?.textContent?.trim() || "";
+        const url = (titleElement as HTMLAnchorElement)?.href || "";
+        
+        const authorsElement = article.querySelector(".authors, .author-list, .contributors");
+        const authors = authorsElement?.textContent?.trim() || "";
+        
+        const abstractElement = article.querySelector(".abstract, .snippet, .summary");
+        const abstract = abstractElement?.textContent?.trim() || "";
+        
+        const journalElement = article.querySelector(".journal, .source, .publication");
+        const journal = journalElement?.textContent?.trim() || "Cochrane Database";
+        
+        if (title && title.length > 10) {
+          results.push({
+            title,
+            authors,
+            abstract,
+            journal,
+            year: "",
+            citations: "",
+            url: url.startsWith("http") ? url : `https://www.cochranelibrary.com${url}`,
+          });
+        }
+      });
+      
+      return results;
+    });
+  } catch (error) {
+    console.error("Error scraping Cochrane Library:", error);
+    return [];
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
+  }
+}
+
+// Search Clinical Trials
+async function searchClinicalTrials(query: string): Promise<GoogleScholarArticle[]> {
+  try {
+    console.log(`🔍 Searching ClinicalTrials.gov for: ${query}`);
+    
+    // Use ClinicalTrials.gov API
+    const response = await superagent
+      .get("https://clinicaltrials.gov/api/v2/studies")
+      .query({
+        query: query,
+        format: "json",
+        limit: 10,
+      })
+      .set("User-Agent", USER_AGENT);
+
+    const data = response.body;
+    const results: GoogleScholarArticle[] = [];
+
+    if (data.studies && data.studies.length > 0) {
+      data.studies.forEach((study: any) => {
+        const protocolSection = study.protocolSection;
+        if (protocolSection) {
+          const identificationModule = protocolSection.identificationModule;
+          const statusModule = protocolSection.statusModule;
+          const designModule = protocolSection.designModule;
+          
+          if (identificationModule) {
+            results.push({
+              title: identificationModule.briefTitle || identificationModule.officialTitle || "Clinical Trial",
+              authors: identificationModule.leadSponsor?.name || "Clinical Trial",
+              abstract: identificationModule.briefSummary || "",
+              journal: "ClinicalTrials.gov",
+              year: statusModule?.startDateStruct?.date || "",
+              citations: "",
+              url: `https://clinicaltrials.gov/study/${study.protocolSection.identificationModule.nctId}`,
+            });
+          }
+        }
+      });
+    }
+
+    return results;
+  } catch (error) {
+    console.error("Error searching ClinicalTrials.gov:", error);
+    return [];
+  }
+}
+
+// Search medical journals directly
+export async function searchMedicalJournals(
+  query: string,
+): Promise<GoogleScholarArticle[]> {
+  console.log(`🔍 Searching medical journals for: ${query}`);
+  
+  const journalSearches = await Promise.allSettled([
+    searchJournal("NEJM", query),
+    searchJournal("JAMA", query),
+    searchJournal("Lancet", query),
+    searchJournal("BMJ", query),
+    searchJournal("Nature Medicine", query),
+  ]);
+
+  const results: GoogleScholarArticle[] = [];
+
+  journalSearches.forEach((search) => {
+    if (search.status === "fulfilled" && search.value) {
+      results.push(...search.value);
+    }
+  });
+
+  return results.slice(0, 15);
+}
+
+// Generic journal search function
+async function searchJournal(journalName: string, query: string): Promise<GoogleScholarArticle[]> {
+  try {
+    // Use Google Scholar with journal-specific search
+    const journalQuery = `"${journalName}" ${query}`;
+    return await searchGoogleScholar(journalQuery);
+  } catch (error) {
+    console.error(`Error searching ${journalName}:`, error);
+    return [];
   }
 }
 

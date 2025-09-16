@@ -16,6 +16,8 @@ import {
   getRiskCalculators,
   getLabValues,
   getDiagnosticCriteria,
+  searchMedicalDatabases,
+  searchMedicalJournals,
 } from "./utils.js";
 
 const server = new McpServer({
@@ -1082,6 +1084,179 @@ server.tool(
           {
             type: "text",
             text: `Error fetching diagnostic criteria: ${error.message || "Unknown error"}`,
+          },
+        ],
+      };
+    }
+  },
+);
+
+// Enhanced Medical Database Search Tool
+server.tool(
+  "search-medical-databases",
+  "Search across multiple medical databases (PubMed, Google Scholar, Cochrane, ClinicalTrials.gov) for comprehensive results",
+  {
+    query: z
+      .string()
+      .describe("Medical topic or condition to search for across multiple databases"),
+  },
+  async ({ query }) => {
+    try {
+      const articles = await searchMedicalDatabases(query);
+
+      if (articles.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `No medical articles found for "${query}" across any databases. This could be due to:\n- No results matching your query\n- Database API rate limiting\n- Network connectivity issues\n\nTry refining your search terms or try again later.`,
+            },
+          ],
+        };
+      }
+
+      let result = `**Comprehensive Medical Database Search: "${query}"**\n\n`;
+      result += `Found ${articles.length} article(s) across multiple databases\n\n`;
+
+      articles.forEach((article, index) => {
+        result += `${index + 1}. **${article.title}**\n`;
+        if (article.authors) {
+          result += `   Authors: ${article.authors}\n`;
+        }
+        if (article.journal) {
+          result += `   Journal: ${article.journal}\n`;
+        }
+        if (article.year) {
+          result += `   Year: ${article.year}\n`;
+        }
+        if (article.citations) {
+          result += `   Citations: ${article.citations}\n`;
+        }
+        if (article.url) {
+          result += `   URL: ${article.url}\n`;
+        }
+        if (article.abstract) {
+          result += `   Abstract: ${article.abstract.substring(0, 300)}${article.abstract.length > 300 ? "..." : ""}\n`;
+        }
+        result += "\n";
+      });
+
+      result += `\n🚨 **CRITICAL SAFETY WARNING:**\n`;
+      result += `This comprehensive search retrieves information from multiple medical databases dynamically.\n\n`;
+      result += `**DYNAMIC DATA SOURCES:**\n`;
+      result += `• PubMed (National Library of Medicine)\n`;
+      result += `• Google Scholar (Academic search)\n`;
+      result += `• Cochrane Library (Systematic reviews)\n`;
+      result += `• ClinicalTrials.gov (Clinical trials)\n`;
+      result += `• No hardcoded data - all results retrieved in real-time\n\n`;
+      result += `**ALWAYS:**\n`;
+      result += `• Verify information through multiple sources\n`;
+      result += `• Consult qualified healthcare professionals\n`;
+      result += `• Consider publication dates and evidence quality\n`;
+      result += `• Follow established clinical guidelines\n\n`;
+      result += `**NEVER rely solely on this information for clinical decisions.**`;
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: result,
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error searching medical databases: ${error.message || "Unknown error"}. This might be due to network issues or API rate limiting. Please try again later.`,
+          },
+        ],
+      };
+    }
+  },
+);
+
+// Enhanced Medical Journal Search Tool
+server.tool(
+  "search-medical-journals",
+  "Search specific medical journals (NEJM, JAMA, Lancet, BMJ, Nature Medicine) for high-quality research",
+  {
+    query: z
+      .string()
+      .describe("Medical topic or condition to search for in top medical journals"),
+  },
+  async ({ query }) => {
+    try {
+      const articles = await searchMedicalJournals(query);
+
+      if (articles.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `No articles found for "${query}" in top medical journals. This could be due to:\n- No results matching your query\n- Journal-specific search limitations\n- Network connectivity issues\n\nTry refining your search terms or try again later.`,
+            },
+          ],
+        };
+      }
+
+      let result = `**Top Medical Journals Search: "${query}"**\n\n`;
+      result += `Found ${articles.length} article(s) from top medical journals\n\n`;
+
+      articles.forEach((article, index) => {
+        result += `${index + 1}. **${article.title}**\n`;
+        if (article.authors) {
+          result += `   Authors: ${article.authors}\n`;
+        }
+        if (article.journal) {
+          result += `   Journal: ${article.journal}\n`;
+        }
+        if (article.year) {
+          result += `   Year: ${article.year}\n`;
+        }
+        if (article.citations) {
+          result += `   Citations: ${article.citations}\n`;
+        }
+        if (article.url) {
+          result += `   URL: ${article.url}\n`;
+        }
+        if (article.abstract) {
+          result += `   Abstract: ${article.abstract.substring(0, 300)}${article.abstract.length > 300 ? "..." : ""}\n`;
+        }
+        result += "\n";
+      });
+
+      result += `\n🚨 **CRITICAL SAFETY WARNING:**\n`;
+      result += `This search retrieves information from top medical journals dynamically.\n\n`;
+      result += `**DYNAMIC DATA SOURCES:**\n`;
+      result += `• New England Journal of Medicine (NEJM)\n`;
+      result += `• Journal of the American Medical Association (JAMA)\n`;
+      result += `• The Lancet\n`;
+      result += `• British Medical Journal (BMJ)\n`;
+      result += `• Nature Medicine\n`;
+      result += `• No hardcoded data - all results retrieved in real-time\n\n`;
+      result += `**ALWAYS:**\n`;
+      result += `• Verify information through multiple sources\n`;
+      result += `• Consult qualified healthcare professionals\n`;
+      result += `• Consider publication dates and evidence quality\n`;
+      result += `• Follow established clinical guidelines\n\n`;
+      result += `**NEVER rely solely on this information for clinical decisions.**`;
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: result,
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error searching medical journals: ${error.message || "Unknown error"}. This might be due to network issues or API rate limiting. Please try again later.`,
           },
         ],
       };

@@ -36,11 +36,34 @@ All medical information is retrieved dynamically from these live sources:
 - **Data**: Drug name standardization, clinical drug information
 - **Freshness**: Updated with new drug approvals and nomenclature changes
 
-### 5. **Google Scholar** (Web Scraping)
+### 5. **Google Scholar** (Enhanced Web Scraping)
 
 - **Purpose**: Academic research discovery
-- **Method**: Dynamic web scraping with anti-detection measures
-- **Data**: Additional research articles, citations
+- **Method**: Advanced dynamic web scraping with anti-detection measures
+- **Data**: Additional research articles, citations, journal information
+- **Freshness**: Real-time search results
+- **Features**: User agent rotation, random viewports, stealth configuration
+
+### 6. **Cochrane Library** (Web Scraping)
+
+- **Purpose**: Systematic reviews and evidence-based medicine
+- **Method**: Dynamic web scraping
+- **Data**: Cochrane reviews, systematic reviews, meta-analyses
+- **Freshness**: Real-time search results
+
+### 7. **ClinicalTrials.gov** (API)
+
+- **Purpose**: Clinical trial information
+- **Endpoint**: `https://clinicaltrials.gov/api/v2/studies`
+- **Data**: Clinical trial protocols, study information, sponsor details
+- **Freshness**: Real-time as trials are registered
+
+### 8. **Top Medical Journals** (Enhanced Scraping)
+
+- **Purpose**: High-quality medical research
+- **Journals**: NEJM, JAMA, Lancet, BMJ, Nature Medicine
+- **Method**: Journal-specific Google Scholar searches
+- **Data**: Latest research from top-tier medical journals
 - **Freshness**: Real-time search results
 
 ## ⚠️ Important Warnings
@@ -121,6 +144,29 @@ To verify this system uses no hardcoded data:
 3. **Review error messages** - they indicate dynamic search failures, not missing hardcoded data
 4. **Test offline** - system returns empty results when APIs are unavailable
 
+## 🆕 New Enhanced Scrapers
+
+### **Comprehensive Medical Database Search**
+- **Tool**: `search-medical-databases`
+- **Sources**: PubMed, Google Scholar, Cochrane Library, ClinicalTrials.gov
+- **Features**: Parallel searching, duplicate removal, comprehensive results
+- **Use Case**: Broad medical research queries
+
+### **Top Medical Journals Search**
+- **Tool**: `search-medical-journals`
+- **Sources**: NEJM, JAMA, Lancet, BMJ, Nature Medicine
+- **Features**: Journal-specific searches, high-quality research focus
+- **Use Case**: Latest research from top-tier medical journals
+
+### **Enhanced Google Scholar Scraper**
+- **Features**: 
+  - User agent rotation (4 different browsers)
+  - Random viewport sizes
+  - Stealth configuration to avoid detection
+  - Multiple selector strategies for different layouts
+  - Enhanced data extraction with better patterns
+  - Quality filtering and content length limits
+
 ## 🔄 Continuous Updates
 
 This system automatically benefits from:
@@ -130,5 +176,8 @@ This system automatically benefits from:
 - Updated health statistics (WHO)
 - New drug nomenclature (RxNorm)
 - Recent academic publications (Google Scholar)
+- New systematic reviews (Cochrane Library)
+- New clinical trials (ClinicalTrials.gov)
+- Latest research from top medical journals
 
 **No manual updates required for medical data content.**
