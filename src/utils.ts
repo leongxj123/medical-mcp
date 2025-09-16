@@ -293,7 +293,7 @@ export async function searchGoogleScholar(
   let browser;
   try {
     console.log(`🔍 Scraping Google Scholar for: ${query}`);
-    
+
     // Add random delay to avoid rate limiting
     await randomDelay(2000, 5000);
 
@@ -323,7 +323,7 @@ export async function searchGoogleScholar(
 
     // Enhanced stealth configuration
     await page.evaluateOnNewDocument(() => {
-      Object.defineProperty(navigator, 'webdriver', {
+      Object.defineProperty(navigator, "webdriver", {
         get: () => undefined,
       });
     });
@@ -335,7 +335,8 @@ export async function searchGoogleScholar(
       { width: 1440, height: 900 },
       { width: 1536, height: 864 },
     ];
-    const randomViewport = viewports[Math.floor(Math.random() * viewports.length)];
+    const randomViewport =
+      viewports[Math.floor(Math.random() * viewports.length)];
     await page.setViewport(randomViewport);
 
     // Rotate user agents
@@ -352,7 +353,8 @@ export async function searchGoogleScholar(
     await page.setExtraHTTPHeaders({
       "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
       "Accept-Encoding": "gzip, deflate, br",
-      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+      Accept:
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
       "Cache-Control": "no-cache",
       Pragma: "no-cache",
       "Sec-Fetch-Dest": "document",
@@ -364,14 +366,16 @@ export async function searchGoogleScholar(
 
     // Navigate to Google Scholar with enhanced query
     const searchUrl = `${GOOGLE_SCHOLAR_API_BASE}?q=${encodeURIComponent(query)}&hl=en&as_sdt=0%2C5&as_ylo=2020`;
-    await page.goto(searchUrl, { 
-      waitUntil: "networkidle2", 
-      timeout: 45000 
+    await page.goto(searchUrl, {
+      waitUntil: "networkidle2",
+      timeout: 45000,
     });
 
     // Wait for results with multiple fallback selectors
     try {
-      await page.waitForSelector(".gs_r, .gs_ri, .gs_or, [data-rp]", { timeout: 20000 });
+      await page.waitForSelector(".gs_r, .gs_ri, .gs_or, [data-rp]", {
+        timeout: 20000,
+      });
     } catch (error) {
       // Try alternative selectors
       try {
@@ -385,15 +389,15 @@ export async function searchGoogleScholar(
     // Enhanced data extraction with better selectors
     return await page.evaluate(() => {
       const results: GoogleScholarArticle[] = [];
-      
+
       // Multiple selector strategies for different Google Scholar layouts
       const selectors = [
         ".gs_r, .gs_ri, .gs_or",
         ".g, .rc, .r",
         "[data-rp]",
-        ".gs_rt, .gs_ri"
+        ".gs_rt, .gs_ri",
       ];
-      
+
       let articleElements: NodeListOf<Element> | null = null;
       for (const selector of selectors) {
         articleElements = document.querySelectorAll(selector);
@@ -413,9 +417,9 @@ export async function searchGoogleScholar(
             "a[data-clk]",
             ".gs_rt a",
             ".rc h3 a",
-            ".r h3 a"
+            ".r h3 a",
           ];
-          
+
           let title = "";
           let url = "";
           for (const selector of titleSelectors) {
@@ -434,9 +438,9 @@ export async function searchGoogleScholar(
             '[class*="venue"]',
             ".gs_a",
             ".rc .s",
-            ".r .s"
+            ".r .s",
           ];
-          
+
           let authors = "";
           for (const selector of authorSelectors) {
             const authorElement = element.querySelector(selector);
@@ -453,9 +457,9 @@ export async function searchGoogleScholar(
             '[class*="abstract"]',
             ".gs_rs",
             ".rc .st",
-            ".r .st"
+            ".r .st",
           ];
-          
+
           let abstract = "";
           for (const selector of abstractSelectors) {
             const abstractElement = element.querySelector(selector);
@@ -472,9 +476,9 @@ export async function searchGoogleScholar(
             'a[href*="cites"]',
             ".gs_fl",
             ".rc .f",
-            ".r .f"
+            ".r .f",
           ];
-          
+
           let citations = "";
           for (const selector of citationSelectors) {
             const citationElement = element.querySelector(selector);
@@ -490,16 +494,22 @@ export async function searchGoogleScholar(
             /(\d{4})/g,
             /\((\d{4})\)/g,
             /(\d{4})\s*[–-]/g,
-            /(\d{4})\s*$/g
+            /(\d{4})\s*$/g,
           ];
-          
+
           const textSources = [authors, title, abstract, citations];
           for (const text of textSources) {
             for (const pattern of yearPatterns) {
               const matches = text.match(pattern);
               if (matches) {
-                const years = matches.map(m => m.replace(/\D/g, '')).filter(y => y.length === 4);
-                const validYears = years.filter(y => parseInt(y) >= 1900 && parseInt(y) <= new Date().getFullYear() + 1);
+                const years = matches
+                  .map((m) => m.replace(/\D/g, ""))
+                  .filter((y) => y.length === 4);
+                const validYears = years.filter(
+                  (y) =>
+                    parseInt(y) >= 1900 &&
+                    parseInt(y) <= new Date().getFullYear() + 1,
+                );
                 if (validYears.length > 0) {
                   year = validYears[validYears.length - 1]; // Get most recent year
                   break;
@@ -516,9 +526,9 @@ export async function searchGoogleScholar(
             /, ([^,]+)$/,
             /in ([^,]+)/,
             /([A-Z][^,]+(?:Journal|Review|Medicine|Health|Science|Research))/i,
-            /([A-Z][^,]+(?:Lancet|Nature|Science|NEJM|JAMA|BMJ))/i
+            /([A-Z][^,]+(?:Lancet|Nature|Science|NEJM|JAMA|BMJ))/i,
           ];
-          
+
           for (const pattern of journalPatterns) {
             const match = authors.match(pattern);
             if (match) {
@@ -562,7 +572,7 @@ export async function searchMedicalDatabases(
   query: string,
 ): Promise<GoogleScholarArticle[]> {
   console.log(`🔍 Searching medical databases for: ${query}`);
-  
+
   // Try multiple medical databases in parallel
   const searches = await Promise.allSettled([
     searchPubMedArticles(query, 5),
@@ -604,22 +614,27 @@ export async function searchMedicalDatabases(
   }
 
   // Remove duplicates based on title similarity
-  const uniqueResults = results.filter((article, index, self) =>
-    index === self.findIndex(a => 
-      a.title.toLowerCase().replace(/[^\w\s]/g, "") === 
-      article.title.toLowerCase().replace(/[^\w\s]/g, "")
-    )
+  const uniqueResults = results.filter(
+    (article, index, self) =>
+      index ===
+      self.findIndex(
+        (a) =>
+          a.title.toLowerCase().replace(/[^\w\s]/g, "") ===
+          article.title.toLowerCase().replace(/[^\w\s]/g, ""),
+      ),
   );
 
   return uniqueResults.slice(0, 20); // Limit to 20 results
 }
 
 // Search Cochrane Library
-async function searchCochraneLibrary(query: string): Promise<GoogleScholarArticle[]> {
+async function searchCochraneLibrary(
+  query: string,
+): Promise<GoogleScholarArticle[]> {
   let browser;
   try {
     console.log(`🔍 Scraping Cochrane Library for: ${query}`);
-    
+
     await randomDelay(1000, 3000);
 
     browser = await puppeteer.launch({
@@ -641,7 +656,9 @@ async function searchCochraneLibrary(query: string): Promise<GoogleScholarArticl
 
     const page = await browser.newPage();
     await page.setViewport({ width: 1920, height: 1080 });
-    await page.setUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36");
+    await page.setUserAgent(
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    );
 
     // Search Cochrane Library
     const searchUrl = `https://www.cochranelibrary.com/search?q=${encodeURIComponent(query)}`;
@@ -649,22 +666,33 @@ async function searchCochraneLibrary(query: string): Promise<GoogleScholarArticl
 
     return await page.evaluate(() => {
       const results: GoogleScholarArticle[] = [];
-      const articles = document.querySelectorAll(".search-result-item, .result-item, .search-result");
-      
+      const articles = document.querySelectorAll(
+        ".search-result-item, .result-item, .search-result",
+      );
+
       articles.forEach((article) => {
-        const titleElement = article.querySelector("h3 a, .title a, .result-title a");
+        const titleElement = article.querySelector(
+          "h3 a, .title a, .result-title a",
+        );
         const title = titleElement?.textContent?.trim() || "";
         const url = (titleElement as HTMLAnchorElement)?.href || "";
-        
-        const authorsElement = article.querySelector(".authors, .author-list, .contributors");
+
+        const authorsElement = article.querySelector(
+          ".authors, .author-list, .contributors",
+        );
         const authors = authorsElement?.textContent?.trim() || "";
-        
-        const abstractElement = article.querySelector(".abstract, .snippet, .summary");
+
+        const abstractElement = article.querySelector(
+          ".abstract, .snippet, .summary",
+        );
         const abstract = abstractElement?.textContent?.trim() || "";
-        
-        const journalElement = article.querySelector(".journal, .source, .publication");
-        const journal = journalElement?.textContent?.trim() || "Cochrane Database";
-        
+
+        const journalElement = article.querySelector(
+          ".journal, .source, .publication",
+        );
+        const journal =
+          journalElement?.textContent?.trim() || "Cochrane Database";
+
         if (title && title.length > 10) {
           results.push({
             title,
@@ -673,11 +701,13 @@ async function searchCochraneLibrary(query: string): Promise<GoogleScholarArticl
             journal,
             year: "",
             citations: "",
-            url: url.startsWith("http") ? url : `https://www.cochranelibrary.com${url}`,
+            url: url.startsWith("http")
+              ? url
+              : `https://www.cochranelibrary.com${url}`,
           });
         }
       });
-      
+
       return results;
     });
   } catch (error) {
@@ -691,10 +721,12 @@ async function searchCochraneLibrary(query: string): Promise<GoogleScholarArticl
 }
 
 // Search Clinical Trials
-async function searchClinicalTrials(query: string): Promise<GoogleScholarArticle[]> {
+async function searchClinicalTrials(
+  query: string,
+): Promise<GoogleScholarArticle[]> {
   try {
     console.log(`🔍 Searching ClinicalTrials.gov for: ${query}`);
-    
+
     // Use ClinicalTrials.gov API
     const response = await superagent
       .get("https://clinicaltrials.gov/api/v2/studies")
@@ -715,11 +747,15 @@ async function searchClinicalTrials(query: string): Promise<GoogleScholarArticle
           const identificationModule = protocolSection.identificationModule;
           const statusModule = protocolSection.statusModule;
           const designModule = protocolSection.designModule;
-          
+
           if (identificationModule) {
             results.push({
-              title: identificationModule.briefTitle || identificationModule.officialTitle || "Clinical Trial",
-              authors: identificationModule.leadSponsor?.name || "Clinical Trial",
+              title:
+                identificationModule.briefTitle ||
+                identificationModule.officialTitle ||
+                "Clinical Trial",
+              authors:
+                identificationModule.leadSponsor?.name || "Clinical Trial",
               abstract: identificationModule.briefSummary || "",
               journal: "ClinicalTrials.gov",
               year: statusModule?.startDateStruct?.date || "",
@@ -743,7 +779,7 @@ export async function searchMedicalJournals(
   query: string,
 ): Promise<GoogleScholarArticle[]> {
   console.log(`🔍 Searching medical journals for: ${query}`);
-  
+
   const journalSearches = await Promise.allSettled([
     searchJournal("NEJM", query),
     searchJournal("JAMA", query),
@@ -764,7 +800,10 @@ export async function searchMedicalJournals(
 }
 
 // Generic journal search function
-async function searchJournal(journalName: string, query: string): Promise<GoogleScholarArticle[]> {
+async function searchJournal(
+  journalName: string,
+  query: string,
+): Promise<GoogleScholarArticle[]> {
   try {
     // Use Google Scholar with journal-specific search
     const journalQuery = `"${journalName}" ${query}`;

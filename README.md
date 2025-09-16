@@ -371,6 +371,7 @@ The Google Scholar integration uses Puppeteer for web scraping with the followin
 ## 🚀 Usage
 
 ### **Stdio Mode (Default - Most Secure)**
+
 ```bash
 # Build and run in stdio mode (inherently localhost-only)
 npm run build
@@ -381,6 +382,7 @@ node build/index.js
 ```
 
 ### **HTTP Mode (Localhost-Only)**
+
 ```bash
 # HTTP server on localhost only (port 3000)
 npm run start:http
@@ -395,6 +397,7 @@ curl http://localhost:3000/info
 ```
 
 ### **Development Mode**
+
 ```bash
 # Build and run stdio
 npm run dev
@@ -406,6 +409,7 @@ npm run dev:http
 ## 🔒 Security Verification
 
 ### **Test Localhost Access**
+
 ```bash
 # Should work (localhost)
 curl http://localhost:3000/info
@@ -416,6 +420,7 @@ curl http://YOUR_EXTERNAL_IP:3000/info
 ```
 
 ### **Check Binding**
+
 ```bash
 # Verify server is bound to localhost only
 netstat -an | grep :3000

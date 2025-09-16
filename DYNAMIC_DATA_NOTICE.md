@@ -147,19 +147,22 @@ To verify this system uses no hardcoded data:
 ## 🆕 New Enhanced Scrapers
 
 ### **Comprehensive Medical Database Search**
+
 - **Tool**: `search-medical-databases`
 - **Sources**: PubMed, Google Scholar, Cochrane Library, ClinicalTrials.gov
 - **Features**: Parallel searching, duplicate removal, comprehensive results
 - **Use Case**: Broad medical research queries
 
 ### **Top Medical Journals Search**
+
 - **Tool**: `search-medical-journals`
 - **Sources**: NEJM, JAMA, Lancet, BMJ, Nature Medicine
 - **Features**: Journal-specific searches, high-quality research focus
 - **Use Case**: Latest research from top-tier medical journals
 
 ### **Enhanced Google Scholar Scraper**
-- **Features**: 
+
+- **Features**:
   - User agent rotation (4 different browsers)
   - Random viewport sizes
   - Stealth configuration to avoid detection
