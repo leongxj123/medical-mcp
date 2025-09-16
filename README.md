@@ -4,6 +4,18 @@
 
 A Model Context Protocol (MCP) server that provides comprehensive medical information by querying multiple authoritative medical APIs including FDA, WHO, PubMed, and RxNorm.
 
+## 🔒 Security Features
+
+**Localhost-Only Binding**: This server is configured for maximum security with localhost-only access:
+
+- **Stdio Mode (Default)**: Inherently localhost-only process communication
+- **HTTP Mode**: Binds to `127.0.0.1` only, blocks all external connections
+- **IP Filtering**: Validates all incoming connections against localhost addresses
+- **CORS Restrictions**: Only allows localhost origins
+- **Security Logging**: All blocked connection attempts are logged
+
+See [SECURITY.md](SECURITY.md) for detailed security configuration.
+
 ## Features
 
 This MCP server offers five specialized tools for querying medical information from reliable sources:
@@ -355,6 +367,60 @@ The Google Scholar integration uses Puppeteer for web scraping with the followin
 - **Browser Management**: Proper browser cleanup to prevent resource leaks
 - **Timeout Handling**: Configurable timeouts for network requests
 - **Error Recovery**: Automatic retry logic for failed requests
+
+## 🚀 Usage
+
+### **Stdio Mode (Default - Most Secure)**
+```bash
+# Build and run in stdio mode (inherently localhost-only)
+npm run build
+npm start
+
+# Or directly
+node build/index.js
+```
+
+### **HTTP Mode (Localhost-Only)**
+```bash
+# HTTP server on localhost only (port 3000)
+npm run start:http
+
+# Custom port
+npm run start:http:port
+# or
+node build/index.js --http --port=8080
+
+# Test localhost access
+curl http://localhost:3000/info
+```
+
+### **Development Mode**
+```bash
+# Build and run stdio
+npm run dev
+
+# Build and run HTTP
+npm run dev:http
+```
+
+## 🔒 Security Verification
+
+### **Test Localhost Access**
+```bash
+# Should work (localhost)
+curl http://localhost:3000/info
+
+# Should be blocked (external IP)
+curl http://YOUR_EXTERNAL_IP:3000/info
+# Returns: "Access denied: This server is restricted to localhost only"
+```
+
+### **Check Binding**
+```bash
+# Verify server is bound to localhost only
+netstat -an | grep :3000
+# Should show: 127.0.0.1:3000 (not 0.0.0.0:3000)
+```
 
 ## Medical Disclaimer
 
