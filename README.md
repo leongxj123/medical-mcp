@@ -406,6 +406,252 @@ npm run dev
 npm run dev:http
 ```
 
+## 🤖 Claude Desktop Integration
+
+### **Setup Instructions**
+
+#### **1. Install and Build the Server**
+
+```bash
+# Clone the repository
+git clone https://github.com/JamesANZ/medical-mcp.git
+cd medical-mcp
+
+# Install dependencies
+npm install
+
+# Build the server
+npm run build
+```
+
+#### **2. Configure Claude Desktop**
+
+Create or edit your Claude Desktop configuration file:
+
+**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "medical-mcp": {
+      "command": "node",
+      "args": ["/path/to/medical-mcp/build/index.js"],
+      "cwd": "/path/to/medical-mcp"
+    }
+  }
+}
+```
+
+**Replace the paths with your actual installation directory:**
+
+**For users with NVM (Node Version Manager):**
+
+```json
+{
+  "mcpServers": {
+    "medical-mcp": {
+      "command": "/Users/yourusername/.nvm/versions/node/v22.17.0/bin/node",
+      "args": [
+        "/Users/yourusername/Documents/projects/medical-mcp/build/index.js"
+      ]
+    }
+  }
+}
+```
+
+**For users with system Node.js:**
+
+```json
+{
+  "mcpServers": {
+    "medical-mcp": {
+      "command": "node",
+      "args": ["/Users/yourusername/medical-mcp/build/index.js"],
+      "cwd": "/Users/yourusername/medical-mcp"
+    }
+  }
+}
+```
+
+**To find your Node.js path:**
+
+```bash
+# If using NVM
+which node
+# Example output: /Users/yourusername/.nvm/versions/node/v22.17.0/bin/node
+
+# If using system Node.js
+which node
+# Example output: /usr/local/bin/node
+```
+
+#### **3. Restart Claude Desktop**
+
+- Close Claude Desktop completely
+- Reopen Claude Desktop
+- The Medical MCP Server will start automatically
+
+### **Available Medical Tools in Claude**
+
+Once connected, you'll have access to these medical tools:
+
+#### **🔍 Search Tools**
+
+- `search-drugs` - Search FDA drug database
+- `search-pubmed-articles` - Search medical literature
+- `search-google-scholar` - Search academic research
+- `search-medical-databases` - Comprehensive multi-database search
+- `search-medical-journals` - Search top medical journals
+
+#### **💊 Drug Information Tools**
+
+- `get-drug-by-ndc` - Get drug details by NDC code
+- `check-drug-interactions` - Check drug interactions
+- `get-drug-safety-info` - Get drug safety information
+
+#### **🏥 Clinical Tools**
+
+- `generate-differential-diagnosis` - Generate differential diagnoses
+- `get-diagnostic-criteria` - Get diagnostic criteria for conditions
+- `get-risk-calculators` - Get clinical risk calculators
+- `get-lab-values` - Get normal lab value ranges
+
+#### **📊 Health Data Tools**
+
+- `get-health-indicators` - Get WHO health statistics
+- `search-rxnorm-drugs` - Search RxNorm drug database
+- `search-clinical-guidelines` - Search clinical guidelines
+
+### **Example Claude Conversations**
+
+#### **Drug Information Query**
+
+```
+User: "What are the side effects of metformin and can it interact with lisinopril?"
+
+Claude will use:
+- search-drugs for metformin information
+- check-drug-interactions for metformin + lisinopril
+- get-drug-safety-info for detailed safety data
+```
+
+#### **Clinical Decision Support**
+
+```
+User: "A 45-year-old patient presents with chest pain, shortness of breath, and diaphoresis. What should I consider?"
+
+Claude will use:
+- generate-differential-diagnosis for possible conditions
+- get-diagnostic-criteria for specific diagnostic criteria
+- search-medical-databases for latest research
+```
+
+#### **Research and Literature Review**
+
+```
+User: "Find recent research on COVID-19 treatment protocols"
+
+Claude will use:
+- search-pubmed-articles for medical literature
+- search-medical-journals for top-tier research
+- search-google-scholar for additional academic sources
+```
+
+### **🔒 Security Features in Claude**
+
+- **Localhost-Only**: Server runs locally, no external access
+- **Process Isolation**: Medical data stays on your machine
+- **No Data Storage**: No medical data is stored locally
+- **Dynamic Data**: All information retrieved in real-time
+- **Audit Logging**: All queries are logged for transparency
+
+### **Troubleshooting**
+
+#### **Server Won't Start**
+
+```bash
+# Check if the server builds correctly
+npm run build
+
+# Test the server directly
+node build/index.js
+
+# Check for port conflicts
+lsof -i :3000
+```
+
+#### **Claude Can't Connect**
+
+1. Verify the configuration file path is correct
+2. Ensure the server executable path is absolute
+3. Check that Node.js is in your PATH
+4. Restart Claude Desktop after configuration changes
+
+#### **Permission Issues**
+
+```bash
+# Make sure the executable has proper permissions
+chmod 755 build/index.js
+
+# On macOS, you might need to allow Node.js in Security & Privacy
+```
+
+#### **Network Issues**
+
+- The server uses localhost-only binding for security
+- No external network access required for the server itself
+- Medical data is fetched from external APIs when needed
+
+### **Best Practices**
+
+#### **For Medical Professionals**
+
+- Always verify information through multiple sources
+- Use as a starting point for research, not final decisions
+- Follow established clinical guidelines
+- Document your decision-making process
+
+#### **For Students and Researchers**
+
+- Use for literature reviews and research
+- Cross-reference with primary sources
+- Understand the limitations of AI-generated summaries
+- Always cite original sources
+
+#### **For General Users**
+
+- Use for educational purposes only
+- Never replace professional medical advice
+- Consult healthcare providers for medical decisions
+- Be aware of information limitations
+
+### **Advanced Configuration**
+
+#### **Custom Port (if needed)**
+
+```json
+{
+  "mcpServers": {
+    "medical-mcp": {
+      "command": "node",
+      "args": ["/path/to/medical-mcp/build/index.js", "--http", "--port=3001"],
+      "cwd": "/path/to/medical-mcp"
+    }
+  }
+}
+```
+
+#### **Environment Variables**
+
+```bash
+# Set custom API timeouts
+export MCP_TIMEOUT=30000
+
+# Set custom user agent
+export MCP_USER_AGENT="Medical-Research-Tool/1.0"
+```
+
 ## 🔒 Security Verification
 
 ### **Test Localhost Access**
