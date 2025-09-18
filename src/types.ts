@@ -76,7 +76,6 @@ export type ClinicalGuideline = {
   evidence_level?: string;
 };
 
-// Drug Safety Types
 export type DrugSafetyInfo = {
   drug_name: string;
   pregnancy_category?: string; // A, B, C, D, X, or N (not classified)

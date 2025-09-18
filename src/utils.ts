@@ -54,7 +54,6 @@ export async function getDrugByNDC(ndc: string): Promise<DrugLabel | null> {
   }
 }
 
-// WHO API functions
 export async function getHealthIndicators(
   indicatorName: string,
   country?: string,
@@ -220,7 +219,6 @@ export async function getHealthIndicators(
   }
 }
 
-// Helper function to generate common variations of indicator names
 function getIndicatorVariations(indicatorName: string): string[] {
   const variations: string[] = [];
   const lower = indicatorName.toLowerCase();
@@ -266,7 +264,6 @@ function getIndicatorVariations(indicatorName: string): string[] {
   return [...new Set(variations)];
 }
 
-// RxNorm API functions
 export async function searchRxNormDrugs(query: string): Promise<RxNormDrug[]> {
   try {
     const res = await superagent
@@ -280,13 +277,587 @@ export async function searchRxNormDrugs(query: string): Promise<RxNormDrug[]> {
   }
 }
 
-// Utility function to add random delay
 function randomDelay(min: number, max: number): Promise<void> {
   const delay = Math.random() * (max - min) + min;
   return new Promise((resolve) => setTimeout(resolve, delay));
 }
 
-// Enhanced Medical Scraper System - No Hardcoded Data
+export function createMCPResponse(text: string) {
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: text,
+      },
+    ],
+  };
+}
+
+function formatArticleItem(article: any, index: number): string {
+  let result = `${index + 1}. **${article.title}**\n`;
+  if (article.authors) {
+    result += `   Authors: ${article.authors}\n`;
+  }
+  if (article.journal) {
+    result += `   Journal: ${article.journal}\n`;
+  }
+  if (article.year) {
+    result += `   Year: ${article.year}\n`;
+  }
+  if (article.citations) {
+    result += `   Citations: ${article.citations}\n`;
+  }
+  if (article.url) {
+    result += `   URL: ${article.url}\n`;
+  }
+  if (article.abstract) {
+    result += `   Abstract: ${article.abstract.substring(0, 300)}${article.abstract.length > 300 ? "..." : ""}\n`;
+  }
+  result += "\n";
+  return result;
+}
+
+export function createErrorResponse(operation: string, error: any) {
+  return createMCPResponse(
+    `Error ${operation}: ${error.message || "Unknown error"}`,
+  );
+}
+
+export function formatDrugSearchResults(drugs: any[], query: string) {
+  if (drugs.length === 0) {
+    return createMCPResponse(
+      `No drugs found for "${query}". Try a different search term.`,
+    );
+  }
+
+  let result = `**Drug Search Results for "${query}"**\n\n`;
+  result += `Found ${drugs.length} drug(s)\n\n`;
+
+  drugs.forEach((drug, index) => {
+    result += `${index + 1}. **${drug.openfda.brand_name?.[0] || "Unknown Brand"}**\n`;
+    result += `   Generic Name: ${drug.openfda.generic_name?.[0] || "Not specified"}\n`;
+    result += `   Manufacturer: ${drug.openfda.manufacturer_name?.[0] || "Not specified"}\n`;
+    result += `   Route: ${drug.openfda.route?.[0] || "Not specified"}\n`;
+    result += `   Dosage Form: ${drug.openfda.dosage_form?.[0] || "Not specified"}\n`;
+
+    if (drug.purpose && drug.purpose.length > 0) {
+      result += `   Purpose: ${drug.purpose[0].substring(0, 200)}${drug.purpose[0].length > 200 ? "..." : ""}\n`;
+    }
+
+    result += `   Last Updated: ${drug.effective_time}\n\n`;
+  });
+
+  return createMCPResponse(result);
+}
+
+export function formatDrugDetails(drug: any, ndc: string) {
+  if (!drug) {
+    return createMCPResponse(`No drug found with NDC: ${ndc}`);
+  }
+
+  let result = `**Drug Details for NDC: ${ndc}**\n\n`;
+  result += `**Basic Information:**\n`;
+  result += `- Brand Name: ${drug.openfda.brand_name?.[0] || "Not specified"}\n`;
+  result += `- Generic Name: ${drug.openfda.generic_name?.[0] || "Not specified"}\n`;
+  result += `- Manufacturer: ${drug.openfda.manufacturer_name?.[0] || "Not specified"}\n`;
+  result += `- Route: ${drug.openfda.route?.[0] || "Not specified"}\n`;
+  result += `- Dosage Form: ${drug.openfda.dosage_form?.[0] || "Not specified"}\n`;
+  result += `- Last Updated: ${drug.effective_time}\n\n`;
+
+  if (drug.purpose && drug.purpose.length > 0) {
+    result += `**Purpose/Uses:**\n`;
+    drug.purpose.forEach((purpose: string, index: number) => {
+      result += `${index + 1}. ${purpose}\n`;
+    });
+    result += "\n";
+  }
+
+  if (drug.warnings && drug.warnings.length > 0) {
+    result += `**Warnings:**\n`;
+    drug.warnings.forEach((warning: string, index: number) => {
+      result += `${index + 1}. ${warning.substring(0, 300)}${warning.length > 300 ? "..." : ""}\n`;
+    });
+    result += "\n";
+  }
+
+  if (drug.drug_interactions && drug.drug_interactions.length > 0) {
+    result += `**Drug Interactions:**\n`;
+    drug.drug_interactions.forEach((interaction: string, index: number) => {
+      result += `${index + 1}. ${interaction.substring(0, 300)}${interaction.length > 300 ? "..." : ""}\n`;
+    });
+    result += "\n";
+  }
+
+  return createMCPResponse(result);
+}
+
+export function formatHealthIndicators(
+  indicators: any[],
+  indicator: string,
+  country?: string,
+  limit: number = 10,
+) {
+  if (indicators.length === 0) {
+    return createMCPResponse(
+      `No health indicators found for "${indicator}"${country ? ` in ${country}` : ""}. Try a different search term.`,
+    );
+  }
+
+  let result = `**Health Statistics: ${indicator}**\n\n`;
+  if (country) {
+    result += `Country: ${country}\n`;
+  }
+  result += `Found ${indicators.length} data points\n\n`;
+
+  const displayIndicators = indicators.slice(0, limit);
+  displayIndicators.forEach((ind, index) => {
+    result += `${index + 1}. **${ind.SpatialDim}** (${ind.TimeDim})\n`;
+    result += `   Value: ${ind.Value} ${ind.Comments || ""}\n`;
+    result += `   Numeric Value: ${ind.NumericValue}\n`;
+    if (ind.Low && ind.High) {
+      result += `   Range: ${ind.Low} - ${ind.High}\n`;
+    }
+    result += `   Date: ${ind.Date}\n\n`;
+  });
+
+  return createMCPResponse(result);
+}
+
+export function formatPubMedArticles(articles: any[], query: string) {
+  if (articles.length === 0) {
+    return createMCPResponse(
+      `No medical articles found for "${query}". Try different search terms or check the spelling.`,
+    );
+  }
+
+  let result = `**Medical Literature Search: "${query}"**\n\n`;
+  result += `Found ${articles.length} article(s)\n\n`;
+
+  articles.forEach((article, index) => {
+    result += `${index + 1}. **${article.title}**\n`;
+    result += `   Authors: ${article.authors.join(", ")}\n`;
+    result += `   Journal: ${article.journal}\n`;
+    result += `   Publication Date: ${article.publication_date}\n`;
+    result += `   PMID: ${article.pmid}\n`;
+    if (article.abstract) {
+      result += `   Abstract: ${article.abstract.substring(0, 300)}${article.abstract.length > 300 ? "..." : ""}\n`;
+    }
+    result += `   URL: https://pubmed.ncbi.nlm.nih.gov/${article.pmid}/\n\n`;
+  });
+
+  return createMCPResponse(result);
+}
+
+export function formatGoogleScholarArticles(articles: any[], query: string) {
+  if (articles.length === 0) {
+    return createMCPResponse(
+      `No academic articles found for "${query}". This could be due to no results matching your query, rate limiting, or network issues.`,
+    );
+  }
+
+  let result = `**Academic Research Search: "${query}"**\n\n`;
+  result += `Found ${articles.length} article(s)\n\n`;
+
+  articles.forEach((article, index) => {
+    result += formatArticleItem(article, index);
+  });
+
+  return createMCPResponse(result);
+}
+
+export function formatDrugInteractions(
+  interactions: any[],
+  drug1: string,
+  drug2: string,
+) {
+  if (interactions.length === 0) {
+    return createMCPResponse(
+      `No significant drug interactions found between ${drug1} and ${drug2}. However, always consult a healthcare provider before combining medications.`,
+    );
+  }
+
+  let result = `**Drug Interaction Check: ${drug1} + ${drug2}**\n\n`;
+  result += `Found ${interactions.length} interaction(s)\n\n`;
+
+  interactions.forEach((interaction, index) => {
+    result += `${index + 1}. **${interaction.severity} Interaction**\n`;
+    result += `   Description: ${interaction.description}\n`;
+    if (interaction.clinical_effects) {
+      result += `   Clinical Effects: ${interaction.clinical_effects}\n`;
+    }
+    if (interaction.management) {
+      result += `   Management: ${interaction.management}\n`;
+    }
+    result += "\n";
+  });
+
+  return createMCPResponse(result);
+}
+
+export function formatDifferentialDiagnosis(diagnosis: any, symptoms: string) {
+  if (!diagnosis || diagnosis.possible_diagnoses.length === 0) {
+    return createMCPResponse(
+      `No differential diagnosis generated for symptoms: ${symptoms}. Please consult a healthcare professional for proper evaluation.`,
+    );
+  }
+
+  let result = `**Differential Diagnosis for: ${symptoms}**\n\n`;
+
+  if (diagnosis.possible_diagnoses && diagnosis.possible_diagnoses.length > 0) {
+    result += `**Possible Diagnoses:**\n`;
+    diagnosis.possible_diagnoses.forEach((diag: any, index: number) => {
+      result += `${index + 1}. **${diag.diagnosis}** (${diag.probability} probability)\n`;
+      if (diag.key_findings && diag.key_findings.length > 0) {
+        result += `   Key Findings: ${diag.key_findings.join(", ")}\n`;
+      }
+      if (diag.next_steps && diag.next_steps.length > 0) {
+        result += `   Next Steps: ${diag.next_steps.join(", ")}\n`;
+      }
+      result += "\n";
+    });
+  }
+
+  if (diagnosis.red_flags && diagnosis.red_flags.length > 0) {
+    result += `**Red Flags:**\n`;
+    diagnosis.red_flags.forEach((flag: string, index: number) => {
+      result += `${index + 1}. ${flag}\n`;
+    });
+    result += "\n";
+  }
+
+  if (
+    diagnosis.urgent_considerations &&
+    diagnosis.urgent_considerations.length > 0
+  ) {
+    result += `**Urgent Considerations:**\n`;
+    diagnosis.urgent_considerations.forEach(
+      (consideration: string, index: number) => {
+        result += `${index + 1}. ${consideration}\n`;
+      },
+    );
+    result += "\n";
+  }
+
+  return createMCPResponse(result);
+}
+
+export function formatDiagnosticCriteria(criteria: any, condition: string) {
+  if (!criteria) {
+    return createMCPResponse(
+      `No diagnostic criteria found for "${condition}". This system searches medical literature dynamically - try different search terms or check the spelling.`,
+    );
+  }
+
+  let result = `**Diagnostic Criteria for: ${condition}**\n\n`;
+
+  if (criteria.criteria_sets && criteria.criteria_sets.length > 0) {
+    result += `**Diagnostic Criteria:**\n`;
+    criteria.criteria_sets.forEach((set: any, index: number) => {
+      result += `${index + 1}. **${set.name}**\n`;
+      if (set.criteria && set.criteria.length > 0) {
+        set.criteria.forEach((criterion: string, cIndex: number) => {
+          result += `   ${cIndex + 1}. ${criterion}\n`;
+        });
+      }
+      result += "\n";
+    });
+  }
+
+  if (criteria.red_flags && criteria.red_flags.length > 0) {
+    result += `**Red Flags:**\n`;
+    criteria.red_flags.forEach((flag: string, index: number) => {
+      result += `${index + 1}. ${flag}\n`;
+    });
+    result += "\n";
+  }
+
+  if (
+    criteria.differential_diagnosis &&
+    criteria.differential_diagnosis.length > 0
+  ) {
+    result += `**Differential Diagnosis:**\n`;
+    criteria.differential_diagnosis.forEach((diff: string, index: number) => {
+      result += `${index + 1}. ${diff}\n`;
+    });
+    result += "\n";
+  }
+
+  return createMCPResponse(result);
+}
+
+function addDataNote(result: string) {
+  result += `• No hardcoded data - all results retrieved in real-time\n\n`;
+  result += `**ALWAYS:**\n`;
+  result += `• Verify information through multiple sources\n`;
+  result += `• Consult qualified healthcare professionals\n`;
+  result += `• Consider publication dates and evidence quality\n`;
+  result += `• Follow established clinical guidelines\n\n`;
+  result += `**NEVER rely solely on this information for clinical decisions.**`;
+
+  return result;
+}
+
+export function formatMedicalDatabasesSearch(articles: any[], query: string) {
+  if (articles.length === 0) {
+    return createMCPResponse(
+      `No medical articles found for "${query}" across any databases. This could be due to no results matching your query, database API rate limiting, or network connectivity issues.`,
+    );
+  }
+
+  let result = `**Comprehensive Medical Database Search: "${query}"**\n\n`;
+  result += `Found ${articles.length} article(s) across multiple databases\n\n`;
+
+  articles.forEach((article, index) => {
+    result += formatArticleItem(article, index);
+  });
+
+  result += `\n🚨 **CRITICAL SAFETY WARNING:**\n`;
+  result += `This comprehensive search retrieves information from multiple medical databases dynamically.\n\n`;
+  result += `**DYNAMIC DATA SOURCES:**\n`;
+  result += `• PubMed (National Library of Medicine)\n`;
+  result += `• Google Scholar (Academic search)\n`;
+  result += `• Cochrane Library (Systematic reviews)\n`;
+  result += `• ClinicalTrials.gov (Clinical trials)\n`;
+  result = addDataNote(result);
+
+  return createMCPResponse(result);
+}
+
+export function formatMedicalJournalsSearch(articles: any[], query: string) {
+  if (articles.length === 0) {
+    return createMCPResponse(
+      `No articles found for "${query}" in top medical journals. This could be due to no results matching your query, journal-specific search limitations, or network connectivity issues.`,
+    );
+  }
+
+  let result = `**Top Medical Journals Search: "${query}"**\n\n`;
+  result += `Found ${articles.length} article(s) from top medical journals\n\n`;
+
+  articles.forEach((article, index) => {
+    result += formatArticleItem(article, index);
+  });
+
+  result += `\n🚨 **CRITICAL SAFETY WARNING:**\n`;
+  result += `This search retrieves information from top medical journals dynamically.\n\n`;
+  result += `**DYNAMIC DATA SOURCES:**\n`;
+  result += `• New England Journal of Medicine (NEJM)\n`;
+  result += `• Journal of the American Medical Association (JAMA)\n`;
+  result += `• The Lancet\n`;
+  result += `• British Medical Journal (BMJ)\n`;
+  result += `• Nature Medicine\n`;
+  result = addDataNote(result);
+
+  return createMCPResponse(result);
+}
+
+export function formatDrugSafetyInfo(safetyInfo: any, drugName: string) {
+  if (!safetyInfo) {
+    return createMCPResponse(
+      `No safety information found for "${drugName}". This may be due to limited data availability or the drug name not being recognized.`,
+    );
+  }
+
+  let result = `**Drug Safety Information: ${drugName}**\n\n`;
+
+  if (safetyInfo.pregnancy) {
+    result += `**Pregnancy Safety:**\n`;
+    result += `Category: ${safetyInfo.pregnancy.category}\n`;
+    result += `Description: ${safetyInfo.pregnancy.description}\n\n`;
+  }
+
+  if (safetyInfo.lactation) {
+    result += `**Lactation Safety:**\n`;
+    result += `Category: ${safetyInfo.lactation.category}\n`;
+    result += `Description: ${safetyInfo.lactation.description}\n\n`;
+  }
+
+  if (safetyInfo.contraindications && safetyInfo.contraindications.length > 0) {
+    result += `**Contraindications:**\n`;
+    safetyInfo.contraindications.forEach(
+      (contraindication: string, index: number) => {
+        result += `${index + 1}. ${contraindication}\n`;
+      },
+    );
+    result += "\n";
+  }
+
+  if (safetyInfo.warnings && safetyInfo.warnings.length > 0) {
+    result += `**Warnings:**\n`;
+    safetyInfo.warnings.forEach((warning: string, index: number) => {
+      result += `${index + 1}. ${warning}\n`;
+    });
+    result += "\n";
+  }
+
+  if (safetyInfo.interactions && safetyInfo.interactions.length > 0) {
+    result += `**Drug Interactions:**\n`;
+    safetyInfo.interactions.forEach((interaction: string, index: number) => {
+      result += `${index + 1}. ${interaction}\n`;
+    });
+    result += "\n";
+  }
+
+  result += `\n🚨 **CRITICAL SAFETY WARNING:**\n`;
+  result += `This safety information is for clinical reference only and may not reflect the most current data.\n\n`;
+  result += `**DYNAMIC DATA SOURCE:**\n`;
+  result += `• Safety information retrieved from live medical databases\n`;
+  result += `• No hardcoded safety data - all information retrieved dynamically\n`;
+  result += `• Information freshness depends on database updates\n\n`;
+  result += `**ALWAYS:**\n`;
+  result += `• Verify safety information through multiple sources\n`;
+  result += `• Consult current prescribing information and guidelines\n`;
+  result += `• Consider individual patient factors and medical history\n`;
+  result += `• Seek specialist consultation when appropriate\n`;
+  result += `• Document your safety assessment\n\n`;
+  result += `**NEVER rely solely on this information for clinical decisions.**`;
+
+  return createMCPResponse(result);
+}
+
+export function formatArticleDetails(article: any, pmid: string) {
+  if (!article) {
+    return createMCPResponse(`No article found with PMID: ${pmid}`);
+  }
+
+  let result = `**Article Details for PMID: ${pmid}**\n\n`;
+  result += `**Title:** ${article.title}\n\n`;
+
+  if (article.authors && article.authors.length > 0) {
+    result += `**Authors:** ${article.authors.join(", ")}\n\n`;
+  }
+
+  result += `**Journal:** ${article.journal}\n`;
+  result += `**Publication Date:** ${article.publication_date}\n`;
+
+  if (article.doi) {
+    result += `**DOI:** ${article.doi}\n`;
+  }
+
+  result += `\n**Abstract:**\n${article.abstract}\n`;
+
+  return createMCPResponse(result);
+}
+
+export function formatRxNormDrugs(drugs: any[], query: string) {
+  if (drugs.length === 0) {
+    return createMCPResponse(
+      `No drugs found in RxNorm database for "${query}". Try a different search term.`,
+    );
+  }
+
+  let result = `**RxNorm Drug Search: "${query}"**\n\n`;
+  result += `Found ${drugs.length} drug(s)\n\n`;
+
+  drugs.forEach((drug, index) => {
+    result += `${index + 1}. **${drug.name}**\n`;
+    result += `   RxCUI: ${drug.rxcui}\n`;
+    result += `   Term Type: ${drug.tty}\n`;
+    result += `   Language: ${drug.language}\n`;
+    if (drug.synonym && drug.synonym.length > 0) {
+      result += `   Synonyms: ${drug.synonym.slice(0, 3).join(", ")}${drug.synonym.length > 3 ? "..." : ""}\n`;
+    }
+    result += "\n";
+  });
+
+  return createMCPResponse(result);
+}
+
+export function formatClinicalGuidelines(
+  guidelines: any[],
+  query: string,
+  organization?: string,
+) {
+  if (guidelines.length === 0) {
+    return createMCPResponse(
+      `No clinical guidelines found for "${query}"${organization ? ` from ${organization}` : ""}. Try a different search term or check if the condition has established guidelines.`,
+    );
+  }
+
+  let result = `**Clinical Guidelines Search: "${query}"**\n\n`;
+  if (organization) {
+    result += `Organization Filter: ${organization}\n`;
+  }
+  result += `Found ${guidelines.length} guideline(s)\n\n`;
+
+  guidelines.forEach((guideline, index) => {
+    result += `${index + 1}. **${guideline.title}**\n`;
+    result += `   Organization: ${guideline.organization}\n`;
+    result += `   Year: ${guideline.year}\n`;
+    result += `   Category: ${guideline.category}\n`;
+    result += `   Evidence Level: ${guideline.evidence_level}\n`;
+    if (guideline.description) {
+      result += `   Description: ${guideline.description}\n`;
+    }
+    result += `   URL: ${guideline.url}\n\n`;
+  });
+
+  return createMCPResponse(result);
+}
+
+export function formatLabValues(labValues: any[]) {
+  let result = `**Laboratory Value Reference**\n\n`;
+  result += `Available for ${labValues.length} test(s)\n\n`;
+
+  labValues.forEach((lab, index) => {
+    result += `${index + 1}. **${lab.test_name}**\n`;
+    result += `   Interpretation: ${lab.interpretation}\n`;
+    result += `   Clinical Significance: ${lab.clinical_significance}\n`;
+    result += `   Critical Values: Low < ${lab.critical_values.low}, High > ${lab.critical_values.high}\n\n`;
+
+    result += `   **Normal Ranges by Age/Pregnancy Status:**\n`;
+    lab.normal_ranges.forEach((range: any) => {
+      result += `   - ${range.age_group}`;
+      if (range.pregnancy_status) {
+        result += ` (${range.pregnancy_status})`;
+      }
+      result += `: `;
+      if (range.male_range && range.female_range) {
+        result += `Male: ${range.male_range}, Female: ${range.female_range}`;
+      } else if (range.male_range) {
+        result += `${range.male_range}`;
+      } else if (range.female_range) {
+        result += `${range.female_range}`;
+      }
+      result += ` ${range.units}\n`;
+    });
+    result += "\n";
+  });
+
+  result += `⚠️  **Important:** Normal ranges may vary between laboratories. Always refer to your local lab's reference ranges. These values are for general guidance only.`;
+
+  return createMCPResponse(result);
+}
+
+export function formatRiskCalculators(calculators: any[]) {
+  let result = `**Available Medical Risk Calculators**\n\n`;
+  result += `Found ${calculators.length} calculator(s)\n\n`;
+
+  calculators.forEach((calculator, index) => {
+    result += `${index + 1}. **${calculator.name}**\n`;
+    result += `   Purpose: ${calculator.purpose}\n`;
+    result += `   Population: ${calculator.population}\n`;
+    result += `   Parameters: ${calculator.parameters.join(", ")}\n`;
+    result += `   Validation: ${calculator.validation}\n`;
+    result += `   URL: ${calculator.url}\n\n`;
+  });
+
+  result += `\n🚨 **CRITICAL SAFETY WARNING:**\n`;
+  result += `These risk calculators are for clinical reference only and may not reflect the most current guidelines.\n\n`;
+  result += `**DYNAMIC DATA SOURCE:**\n`;
+  result += `• Calculator information retrieved from live medical literature searches\n`;
+  result += `• No hardcoded calculator data - all information retrieved dynamically\n`;
+  result += `• Information freshness depends on literature publication and indexing\n\n`;
+  result += `**ALWAYS:**\n`;
+  result += `• Verify calculator validity and current guidelines\n`;
+  result += `• Consider individual patient factors and clinical context\n`;
+  result += `• Use calculators as adjuncts to clinical judgment\n`;
+  result += `• Follow established clinical protocols\n`;
+  result += `• Document your risk assessment methodology\n\n`;
+  result += `**NEVER rely solely on these calculators for clinical decisions.**`;
+
+  return createMCPResponse(result);
+}
+
 export async function searchGoogleScholar(
   query: string,
 ): Promise<GoogleScholarArticle[]> {
@@ -567,7 +1138,6 @@ export async function searchGoogleScholar(
   }
 }
 
-// Additional Medical Scrapers - No Hardcoded Data
 export async function searchMedicalDatabases(
   query: string,
 ): Promise<GoogleScholarArticle[]> {
@@ -627,7 +1197,6 @@ export async function searchMedicalDatabases(
   return uniqueResults.slice(0, 20); // Limit to 20 results
 }
 
-// Search Cochrane Library
 async function searchCochraneLibrary(
   query: string,
 ): Promise<GoogleScholarArticle[]> {
@@ -720,14 +1289,12 @@ async function searchCochraneLibrary(
   }
 }
 
-// Search Clinical Trials
 async function searchClinicalTrials(
   query: string,
 ): Promise<GoogleScholarArticle[]> {
   try {
     console.log(`🔍 Searching ClinicalTrials.gov for: ${query}`);
 
-    // Use ClinicalTrials.gov API
     const response = await superagent
       .get("https://clinicaltrials.gov/api/v2/studies")
       .query({
@@ -746,7 +1313,6 @@ async function searchClinicalTrials(
         if (protocolSection) {
           const identificationModule = protocolSection.identificationModule;
           const statusModule = protocolSection.statusModule;
-          const designModule = protocolSection.designModule;
 
           if (identificationModule) {
             results.push({
@@ -774,7 +1340,6 @@ async function searchClinicalTrials(
   }
 }
 
-// Search medical journals directly
 export async function searchMedicalJournals(
   query: string,
 ): Promise<GoogleScholarArticle[]> {
@@ -799,7 +1364,6 @@ export async function searchMedicalJournals(
   return results.slice(0, 15);
 }
 
-// Generic journal search function
 async function searchJournal(
   journalName: string,
   query: string,
@@ -851,7 +1415,6 @@ export async function searchPubMedArticles(
   }
 }
 
-// Enhanced PubMed XML parser
 export function parsePubMedXML(xmlText: string): PubMedArticle[] {
   const articles: PubMedArticle[] = [];
 
@@ -954,14 +1517,12 @@ export function parsePubMedXML(xmlText: string): PubMedArticle[] {
       });
     } catch (error) {
       console.error("Error parsing individual article:", error);
-      continue;
     }
   }
 
   return articles;
 }
 
-// Get detailed article information by PMID
 export async function getPubMedArticleByPMID(
   pmid: string,
 ): Promise<PubMedArticle | null> {
@@ -983,7 +1544,6 @@ export async function getPubMedArticleByPMID(
   }
 }
 
-// Clinical Guidelines search function
 export async function searchClinicalGuidelines(
   query: string,
   organization?: string,
@@ -1188,7 +1748,6 @@ export async function searchClinicalGuidelines(
           `Error searching for guidelines with term: ${searchTerm}`,
           error instanceof Error ? error.message : String(error),
         );
-        continue;
       }
     }
 
@@ -1210,7 +1769,6 @@ export async function searchClinicalGuidelines(
   }
 }
 
-// Drug Safety Functions - Enhanced Dynamic Search
 export async function getDrugSafetyInfo(
   drugName: string,
 ): Promise<DrugSafetyInfo | null> {
@@ -1290,7 +1848,6 @@ export async function getDrugSafetyInfo(
   }
 }
 
-// Search pregnancy safety from multiple sources
 async function searchPregnancySafety(drugName: string) {
   const terms = [
     `"${drugName}" AND "pregnancy" AND ("FDA category" OR "pregnancy category")`,
@@ -1355,14 +1912,12 @@ async function searchPregnancySafety(drugName: string) {
       }
     } catch (error: any) {
       console.error(`Error searching pregnancy safety: ${error.message}`);
-      continue;
     }
   }
 
   return results;
 }
 
-// Search lactation safety
 async function searchLactationSafety(drugName: string) {
   const terms = [
     `"${drugName}" AND "lactation" AND "safety"`,
@@ -1434,14 +1989,12 @@ async function searchLactationSafety(drugName: string) {
       }
     } catch (error: any) {
       console.error(`Error searching lactation safety: ${error.message}`);
-      continue;
     }
   }
 
   return results;
 }
 
-// Search contraindications dynamically
 async function searchContraindications(drugName: string) {
   const terms = [
     `"${drugName}" AND "contraindication"`,
@@ -1521,7 +2074,6 @@ async function searchContraindications(drugName: string) {
       }
     } catch (error: any) {
       console.error(`Error searching contraindications: ${error.message}`);
-      continue;
     }
   }
 
@@ -1532,7 +2084,6 @@ async function searchContraindications(drugName: string) {
   };
 }
 
-// Search FDA warnings dynamically
 async function searchFDAWarnings(drugName: string) {
   try {
     const fdaRes = await superagent
@@ -1578,7 +2129,6 @@ async function searchFDAWarnings(drugName: string) {
   return { source: "FDA Database", error: "No data found" };
 }
 
-// Search drug interactions dynamically
 async function searchDrugInteractions(drugName: string) {
   const terms = [
     `"${drugName}" AND "drug interaction"`,
@@ -1648,7 +2198,6 @@ async function searchDrugInteractions(drugName: string) {
       }
     } catch (error: any) {
       console.error(`Error searching drug interactions: ${error.message}`);
-      continue;
     }
   }
 
@@ -1700,9 +2249,7 @@ export async function checkDrugInteractions(
 
           for (const article of articles) {
             const abstract = (article.abstract || "").toLowerCase();
-            const title = (article.title || "").toLowerCase();
 
-            // Only process if it's actually about drug interactions
             if (
               (abstract.includes("interaction") ||
                 abstract.includes("contraindication")) &&
@@ -1738,11 +2285,7 @@ export async function checkDrugInteractions(
               );
               if (!existingInteraction) {
                 // Extract specific clinical effects from the abstract
-                const clinicalEffects = extractClinicalEffects(
-                  abstract,
-                  drug1,
-                  drug2,
-                );
+                const clinicalEffects = extractClinicalEffects(abstract);
                 const management = extractManagementAdvice(abstract);
 
                 interactions.push({
@@ -1764,7 +2307,6 @@ export async function checkDrugInteractions(
         }
       } catch (error) {
         console.error(`Error checking interactions for term: ${term}`, error);
-        continue;
       }
     }
 
@@ -1775,12 +2317,7 @@ export async function checkDrugInteractions(
   }
 }
 
-// Helper functions for drug interactions
-function extractClinicalEffects(
-  abstract: string,
-  drug1: string,
-  drug2: string,
-): string | null {
+function extractClinicalEffects(abstract: string): string | null {
   const text = abstract.toLowerCase();
 
   // Look for specific clinical effect patterns
@@ -1831,7 +2368,6 @@ function extractManagementAdvice(abstract: string): string | null {
   return null;
 }
 
-// Diagnostic Support Functions
 export async function generateDifferentialDiagnosis(
   symptoms: string[],
 ): Promise<DifferentialDiagnosis> {
@@ -1937,7 +2473,6 @@ export async function generateDifferentialDiagnosis(
         console.error(
           `Error searching differential diagnosis: ${error instanceof Error ? error.message : String(error)}`,
         );
-        continue;
       }
     }
 
@@ -2108,7 +2643,6 @@ export async function getRiskCalculators(
         }
       } catch (error) {
         console.error(`Error searching for ${term}:`, error);
-        continue;
       }
     }
 
@@ -2120,7 +2654,6 @@ export async function getRiskCalculators(
   }
 }
 
-// Helper functions for extracting calculator information
 function extractCalculatorName(title: string, text: string): string | null {
   const patterns = [
     /([A-Z][a-z]+ [A-Z][a-z]+ [Ss]core)/g,
@@ -2156,16 +2689,6 @@ function extractParameters(text: string): string[] {
   });
 
   return parameters;
-}
-
-function extractValidation(text: string): string {
-  if (text.includes("validated") || text.includes("validation")) {
-    return "Validated";
-  } else if (text.includes("prospective") || text.includes("cohort")) {
-    return "Prospective Study";
-  } else {
-    return "Literature Review";
-  }
 }
 
 export async function getLabValues(testName?: string): Promise<LabValue[]> {
@@ -2207,7 +2730,7 @@ export async function getLabValues(testName?: string): Promise<LabValue[]> {
               text.includes("normal range") ||
               text.includes("reference range")
             ) {
-              const ranges = extractLabRanges(text, testName);
+              const ranges = extractLabRanges(text);
               const criticalValues = extractCriticalValues(text);
 
               if (ranges.length > 0) {
@@ -2281,7 +2804,7 @@ export async function getLabValues(testName?: string): Promise<LabValue[]> {
               text.includes("normal range") ||
               text.includes("reference range")
             ) {
-              const ranges = extractLabRanges(text, test);
+              const ranges = extractLabRanges(text);
               const criticalValues = extractCriticalValues(text);
 
               if (ranges.length > 0) {
@@ -2301,7 +2824,6 @@ export async function getLabValues(testName?: string): Promise<LabValue[]> {
         }
       } catch (error) {
         console.error(`Error searching for ${test}:`, error);
-        continue;
       }
     }
 
@@ -2313,8 +2835,7 @@ export async function getLabValues(testName?: string): Promise<LabValue[]> {
   }
 }
 
-// Helper functions for extracting lab information
-function extractLabRanges(text: string, testName: string): any[] {
+function extractLabRanges(text: string): any[] {
   const ranges: any[] = [];
   const rangePatterns = [
     /(\d+\.?\d*)\s*-\s*(\d+\.?\d*)\s*([a-zA-Z\/%]+)/gi,
@@ -2370,26 +2891,6 @@ function extractCriticalValues(text: string): any {
   });
 
   return critical;
-}
-
-function extractAgeGroups(text: string): string[] {
-  const ageGroups: string[] = [];
-  const agePatterns = [
-    /(\d+)\s*-\s*(\d+)\s*years/gi,
-    /(\d+)\s*to\s*(\d+)\s*years/gi,
-    /adult/gi,
-    /pediatric/gi,
-    /newborn/gi,
-  ];
-
-  agePatterns.forEach((pattern) => {
-    const matches = text.match(pattern);
-    if (matches) {
-      ageGroups.push(...matches);
-    }
-  });
-
-  return ageGroups;
 }
 
 function extractCriteriaSets(text: string, condition: string): any[] {
@@ -2543,7 +3044,6 @@ export async function getDiagnosticCriteria(
         }
       } catch (error: any) {
         console.error(`Error searching diagnostic criteria: ${error.message}`);
-        continue;
       }
     }
 
