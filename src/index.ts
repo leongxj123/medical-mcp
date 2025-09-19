@@ -10,12 +10,7 @@ import {
   searchGoogleScholar,
   getPubMedArticleByPMID,
   searchClinicalGuidelines,
-  getDrugSafetyInfo,
   checkDrugInteractions,
-  generateDifferentialDiagnosis,
-  getRiskCalculators,
-  getLabValues,
-  getDiagnosticCriteria,
   searchMedicalDatabases,
   searchMedicalJournals,
   createErrorResponse,
@@ -25,16 +20,11 @@ import {
   formatPubMedArticles,
   formatGoogleScholarArticles,
   formatDrugInteractions,
-  formatDifferentialDiagnosis,
-  formatDiagnosticCriteria,
   formatMedicalDatabasesSearch,
   formatMedicalJournalsSearch,
-  formatDrugSafetyInfo,
   formatArticleDetails,
   formatRxNormDrugs,
   formatClinicalGuidelines,
-  formatLabValues,
-  formatRiskCalculators,
 } from "./utils.js";
 
 const server = new McpServer({
@@ -245,25 +235,6 @@ server.tool(
   },
 );
 
-// Drug Safety Tools
-server.tool(
-  "get-drug-safety-info",
-  "Get comprehensive drug safety information including pregnancy and lactation categories",
-  {
-    drug_name: z
-      .string()
-      .describe("Name of the drug to check for safety information"),
-  },
-  async ({ drug_name }) => {
-    try {
-      const safetyInfo = await getDrugSafetyInfo(drug_name);
-      return formatDrugSafetyInfo(safetyInfo, drug_name);
-    } catch (error: any) {
-      return createErrorResponse("fetching drug safety information", error);
-    }
-  },
-);
-
 server.tool(
   "check-drug-interactions",
   "Check for potential drug-drug interactions between two medications",
@@ -277,72 +248,6 @@ server.tool(
       return formatDrugInteractions(interactions, drug1, drug2);
     } catch (error: any) {
       return createErrorResponse("checking drug interactions", error);
-    }
-  },
-);
-
-// Diagnostic Support Tools
-server.tool(
-  "generate-differential-diagnosis",
-  "Generate differential diagnosis based on presenting symptoms",
-  {
-    symptoms: z
-      .array(z.string())
-      .min(1)
-      .describe("List of symptoms or presenting complaints"),
-  },
-  async ({ symptoms }) => {
-    try {
-      const differential = await generateDifferentialDiagnosis(symptoms);
-      return formatDifferentialDiagnosis(differential, symptoms.join(", "));
-    } catch (error: any) {
-      return createErrorResponse("generating differential diagnosis", error);
-    }
-  },
-);
-
-server.tool(
-  "get-risk-calculators",
-  "Get available medical risk calculators and scoring systems",
-  {},
-  async () => {
-    try {
-      const calculators = await getRiskCalculators();
-      return formatRiskCalculators(calculators);
-    } catch (error: any) {
-      return createErrorResponse("fetching risk calculators", error);
-    }
-  },
-);
-
-server.tool(
-  "get-lab-values",
-  "Get normal lab value ranges by age group and pregnancy status",
-  {},
-  async () => {
-    try {
-      const labValues = await getLabValues();
-      return formatLabValues(labValues);
-    } catch (error: any) {
-      return createErrorResponse("fetching lab values", error);
-    }
-  },
-);
-
-server.tool(
-  "get-diagnostic-criteria",
-  "Get diagnostic criteria for specific medical conditions",
-  {
-    condition: z
-      .string()
-      .describe("Medical condition to get diagnostic criteria for"),
-  },
-  async ({ condition }) => {
-    try {
-      const criteria = await getDiagnosticCriteria(condition);
-      return formatDiagnosticCriteria(criteria, condition);
-    } catch (error: any) {
-      return createErrorResponse("fetching diagnostic criteria", error);
     }
   },
 );
